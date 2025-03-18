@@ -3,6 +3,9 @@ title: 'VIEWS Data Setup and Modeling Demo '
 author: "Patrick T. Brandt"
 date: "`r format(Sys.time(), '%B %d, %Y')`"
 output:
+  github_document:
+    toc: true
+    toc_depth: 2
   html_document:
     toc: yes
     toc_float: yes
