@@ -1685,7 +1685,7 @@ clusterExport(cl, &quot;oneperiod.fit&quot;)
 # Now fit them all at once!
 system.time(all.tw &lt;- clusterApplyLB(cl, sbdata, oneperiod.fit))</code></pre>
 <pre><code>##    user  system elapsed 
-##   0.100   0.039  52.066</code></pre>
+##   0.101   0.042  53.189</code></pre>
 <pre class="r"><code>stopCluster(cl)</code></pre>
 </div>
 <div id="time-series-parameter-summaries" class="section level2">
