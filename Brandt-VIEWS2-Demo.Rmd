@@ -1,6 +1,6 @@
 ---
 title: 'VIEWS Data Setup and Modeling Demo '
-author: "Patrick T. Brandt"
+author: "Patrick T. Brandt\n"
 date: "`r format(Sys.time(), '%B %d, %Y')`"
 output:
   github_document:
@@ -20,11 +20,16 @@ description: Data and model specification documentation for ViEWS2 forecasts
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, fig.align = "center")
+
+# Check file times to see if we need to re-cache
+mtime <- function(file, ...) {
+  lapply(Sys.glob(c(file, ...)), function(x) file.info(x)$mtime)
+}
 ```
 
 # Introduction
 
-This demo shows how to read and process the initial data from VIEWS / UCDP.  This is based on the data from [VIEWS](https://viewsforecast.org).  Here the files are downloaded from the Dropbox location for the data.  Alternative version would be direct calls to the [API](https://github.com/prio-data/views_api/wiki/Available-datasets)
+This demo shows how to read and process the initial data from VIEWS / UCDP.  This is based on the data from [VIEWS](https://viewsforecast.org).  Here the files are downloaded from the Dropbox location for the data.  Alternative version would be direct calls to the [API](https://github.com/prio-data/views_api/wiki/Available-datasets).
 
 # Country-Month Data setup
 
@@ -38,9 +43,9 @@ and some subsets.
 Now these are compressed, which means there are only data for all
 observations that are observed.
 
-*If you run your own version of this, you will likely need to change the paths to the input files.*  You can get the codebooks and input files [here](https://www.dropbox.com/sh/yxk5w04p2e1xtqk/AACU2k5EUOuEeMq2kZ3gpZZwa?dl=0). 
+*If you run your own version of this, you will likely need to change the paths to the input files.*  You can get the codebooks and input files [here](https://www.dropbox.com/scl/fo/rurpcmtpcquni5onoyuus/AI6p3CLXEGrRVak2wEsTgAM/codebooks?rlkey=v1o4va647qrwc4la7m8i7cedk&subfolder_nav_tracking=1&st=lnki2qvf&dl=0). 
 
-```{r readdata, echo=TRUE, cache=TRUE}
+```{r readdata, echo=TRUE, cache=TRUE, cache.rebuild = !file.exists("cm_features.parquet")}
 
 # CM level data: features and outcomes
 dl_link <- "https://www.dropbox.com/scl/fo/rurpcmtpcquni5onoyuus/AM3DF4JXxM3cthQLt-S4pnE/features/cm/cm_features.parquet?rlkey=v1o4va647qrwc4la7m8i7cedk&e=1&st=wtqiw2z5&dl=1"
@@ -81,27 +86,29 @@ month_ids <- read.csv("month_ids/month_ids.csv", header = TRUE)
 
 (Note the above will also have downloaded the `pgm` items for the months and the countries, so this is available for later processing.)
 
-## Basic data manip for country-months
+## Basic data manipulation for country-months
 
-Here we see how to align the dates and country codes so that the identifiers can always be put back into the data for case identifications.
+Here we see how to align the dates and country codes so that the identifiers can always be put back into the data for case identifications.  This is a set of `merge` commands using base R.
 
 ```{r mergething, echo=TRUE}
 
 # Subset out the main (conflict) variables we want
-df1 <- subset(cm, select = c(month_id, country_id, gleditsch_ward,
+df1 <- subset(cm, select = c(month_id, country_id,
+                             gleditsch_ward,
                              ged_sb, ged_ns, ged_os, 
                              acled_sb, acled_sb_count, acled_os))
 
 # Merge on the country label data
 dfs <- merge(df1, countries, 
-             by.x = "gleditsch_ward", by.y="gwcode")
+             by.x = "country_id", by.y="id")
 
 # Merge on the time periods info
 dfs <- merge(dfs, month_ids[,2:4],
              by.x = "month_id", by.y="month_id")
 
 # Clean up
-rm(df1)
+rm(df1,cm)
+
 ```
 
 
@@ -113,14 +120,14 @@ This summarizes and plots the GED state-based (SB) deaths series.
 #### Simple plots as checks ####
 
 # Simple summary plot to see that we have things correct...
-ms <- sort(unique(cm$month_id))
+ms <- sort(unique(dfs$month_id))
 
 roll.ged.sb <- matrix(NA, nrow=length(ms), ncol=3)
 sbdata <- vector(mode="list", length=length(ms))
 
 for(i in 1: length(ms))
 {
-  sb <- cm[cm$month_id==ms[i],4] 
+  sb <- dfs[dfs$month_id==ms[i],]$ged_sb 
   sbdata[[i]] <- as.vector(unlist(sb))
   roll.ged.sb[i,] <- c(ms[i], mean(sbdata[[i]]), sd(sbdata[[i]]))
 }
@@ -149,13 +156,20 @@ library(ggplot2)
 library(ggridges)
 
 # Plot the distributions by year
-ggplot(dfs, aes(x = ged_sb, y = Year, group = Year)) + geom_density_ridges2()
+ggplot(dfs, aes(x = ged_sb, y = Year, group = Year)) +
+  geom_density_ridges(panel_scaling = TRUE)
+
+
 
 ```
 
+(This last plot needs some work on its aesthetics.  The idea is to show that the modes are the same, but the tails vary widely.)
+
 ## Fit Tweedie models
 
-This is a stability check on the data: can we even really generalize an ED like target density?
+**Describe Tweedie and EDM models here**. 
+
+This is a stability check on the data: can we even really generalize an ED like target density?  Do the parameters of the Tweedie fitted model to the data change or stay the same over time (months)?
 
 ```{r rolltw, include=TRUE}
 library(tweedie)
@@ -228,8 +242,8 @@ colnames(twp.convert) <- c("poisson.lambda",
                            "p0", "gamma.mean", "gamma.phi")
 
 # Compute the observed zeros proportion by month and plot against the predictions:
-freq.zeros <- aggregate(cm$ged_sb==0,
-                        by=list(cm$month_id), mean)
+freq.zeros <- aggregate(dfs$ged_sb==0,
+                        by=list(dfs$month_id), mean)
 
 # Poisson predictions make no sense
 # range(dpois(0, lambda=roll.ged.sb[,1]))
@@ -247,9 +261,137 @@ legend(2013, 0.925,
 
 # Simple prediction models
 
+This section shows how to set up some simple baseline prediction models for each country-month in the data.
+
 ### Basic count regressions
 
+This section sets up a series of count regression models.  It assumes you split the data into training-test splits and fit the following models:
+
+- P = Poisson 
+- NB = Negbin
+- ZIP = ZI Poisson
+- ZINB = ZI Negbin
+- TW = Tweedie 
+
+This is all done via the `count.cf` function defined below.  The result is a set of `N` simulated draws from the forecast density for each model and outcome to be predicted in the test data.
+
+```{r basiccounts, echo=TRUE, message=FALSE}
+# Load needed libraries
+library(statmod)
+library(tweedie)
+library(MASS)
+library(pscl)
+library(zoo)
+
+set.seed(145)
+
+
+# count.cf -- fits a single count model to a series and validates it
+# against a training / test setup with forecast metrics
+#
+# Fits each count regression model on train-test data for
+# P = Poisson 
+# NB = Negbin
+# ZIP = ZI Poisson
+# ZINB = ZI Negbin
+# TW = Tweedie 
+#
+# After MLE fits, generates and returns N draws from the prediction
+# density for each of these models
+#
+
+count.cf <- function(train, test, xi.vec = seq(1.1, 1.75, by=0.025), 
+                     N = 1000)
+{
+  # Fit models
+  p <- glm(y ~ geo, family = poisson, data=train)
+  nb <- glm.nb(y ~ geo, data=train)
+  zip <- zeroinfl(y ~ geo, data=train, dist="poisson", model=FALSE, y = FALSE)
+  zinb <- zeroinfl(y ~ geo, data=train, dist="negbin", model=FALSE, y = FALSE)
+  #  zgeom <- zeroinfl(y ~ 1, data=train, dist="geometric", model=FALSE, y = FALSE)
+  
+  cat("Fitting Tweedie model grid for xi:\n")  
+  param.tw <- tweedie.profile(y ~ geo, xi.vec=xi.vec, 
+                              data = train,
+                              do.plot=FALSE,
+                              control=list(maxit=50),
+                              method="series", verbose=FALSE)
+  tw <- glm(y ~ geo, data = train,
+            family=tweedie(var.power=param.tw$xi.max, link.power=0),
+            control=list(maxit=50))
+  
+  # Predict forecasts for test periods
+  n <- nrow(test)
+  p.p <- predict(p, newdata=test, type="response")
+  p.nb <- predict(nb, newdata=test, type="response")  
+  p.zip <- predict(zip, newdata=test, type="response")
+  p.zinb <- predict(zinb, newdata=test, type="response")
+  #  p.zgeom <- predict(zgeom, newdata=test, type="response")
+  p.tw <- predict(tw, newdata=test, type = "response")
+  
+  # Now simulate the forecasts for each test period
+  cat("Sampling forecast densities")
+  p.sample <- t(sapply(1:n, function(i) {rpois(N, lambda=p.p[i])}))  
+  cat(" .")
+  nb.sample <- t(sapply(1:n, function(i) {rnbinom(N, size=nb$theta, mu=p.nb[i])}))
+  cat(" .")
+  zip.sample <- t(sapply(1:n, function(i) {rpois(N, lambda=p.zip[i])}))
+  cat(" .")
+  zinb.sample <- t(sapply(1:n, function(i) {rnbinom(N, size=zinb$theta, mu=p.zinb[i])}))  
+  cat(" .\n")
+  tw.sample <- t(sapply(1:n, function(i) {rtweedie(N, xi=param.tw$xi.max,
+                                                   mu=p.tw[i], phi=1) }))
+  
+  # Some cleanups
+  rm(p,nb,zip,zinb,tw,
+     p.p,p.nb,p.zip,p.zinb,p.tw)
+  
+  return(list(P = p.sample,
+              NB = nb.sample,
+              ZIP = zip.sample,
+              ZINB = zinb.sample,
+              TW = tw.sample))
+}
+
+```
+
+## Simple demo of the count model comparisons
+
+```{r countdemo1, echo=TRUE, warning=FALSE}
+
+# Define a DV as a simple variable and a factor for the countries
+dfs$y <- dfs$ged_sb
+dfs$geo <- as.factor(dfs$country_id)
+
+# Splits and subsets
+train <- dfs[dfs$Year>2020 & dfs$Year < 2024,]
+test <- dfs[dfs$Year>2023,]
+
+# Now fit models over the subsets
+system.time(count.out <- count.cf(train, test, N=1000))
+
+```
+
+```{r scoringdemo, echo=TRUE, message=FALSE, warning=FALSE}
+library(scoringutils)
+
+# Get the mean CRPS values across the country-year-draws
+check.crps <- lapply(lapply(count.out, 
+                                  crps_sample, 
+                                  observed = test$y), mean)
+
+# Show the CRPS for the test data
+print(unlist(check.crps), digits = 3)
+
+```
 ### Count regressions with GAM / splines
+
+This section demonstrates the approach taken in Brandt (2024).   Here an illusration of a basic model with GAM / GLMM components are illustrated and then compared to the earlier section's analyses.
+
+# Scoring forecasts
+
+Here's how one can compute scoring rules to rank the forecasts from each of the models.  This is akin to Brandt (n.d.).
 
 # PRIO-Grid Month (`pgm`) Data setup
 
+## Analyses like above for some `pgm`
