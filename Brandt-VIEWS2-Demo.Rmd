@@ -372,6 +372,25 @@ system.time(count.out <- count.cf(train, test, N=1000))
 
 ```
 
+
+### Count regressions with GAM / splines / GLMMs
+
+This section demonstrates the approach taken in Brandt (2024).   Here an illusration of a basic model with GAM / GLMM components are illustrated and then compared to the earlier section's analyses.
+
+# Scoring forecasts
+
+Here's how one can compute scoring rules to rank the forecasts from each of the models.  This is akin to Brandt (n.d.).
+
+### Scoring with simple metrics
+
+- RMSE
+- Divergence
+- Brier Scores
+- AUROC
+- CRPS
+
+### CRPS
+
 ```{r scoringdemo, echo=TRUE, message=FALSE, warning=FALSE}
 library(scoringutils)
 
@@ -384,13 +403,23 @@ check.crps <- lapply(lapply(count.out,
 print(unlist(check.crps), digits = 3)
 
 ```
-### Count regressions with GAM / splines
 
-This section demonstrates the approach taken in Brandt (2024).   Here an illusration of a basic model with GAM / GLMM components are illustrated and then compared to the earlier section's analyses.
+## Metrics over time horizons
 
-# Scoring forecasts
+## Benchmarks comaprisons
 
-Here's how one can compute scoring rules to rank the forecasts from each of the models.  This is akin to Brandt (n.d.).
+## Skill scores
+
+# `cm` models with covariates
+
+## Climate
+
+## Demography
+
+## Civil-Military Expenditures
+
+
+
 
 # PRIO-Grid Month (`pgm`) Data setup
 
