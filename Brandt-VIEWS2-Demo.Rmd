@@ -406,7 +406,7 @@ print(unlist(check.crps), digits = 3)
 
 ## Metrics over time horizons
 
-## Benchmarks comaprisons
+## Benchmarks comparisons
 
 ## Skill scores
 
