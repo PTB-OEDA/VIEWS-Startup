@@ -2,6 +2,9 @@
 title: 'VIEWS Data Setup and Modeling Demo '
 author: "Patrick T. Brandt\n"
 date: "`r format(Sys.time(), '%B %d, %Y')`"
+html-math-method:
+  method: mathjax
+  url: "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
 output:
   github_document:
     toc: true
@@ -164,7 +167,7 @@ sb_quantiles <- by(dfs$ged_sb, dfs$Year, quantile,
 
 print(sb_quantiles)
 ```
-Of note here is that the lower 75th to 8th percentile of the distribution is zeros in almost all of the training data.  In recent years this increases slightly.  But this is why baseline predictions of zero or only a recent mean and important for comparison
+Of note here is that the lower 75th to 85th percentile of the distribution is zeros in almost all of the training data.  In recent years this increases slightly.  But this is why baseline predictions of zero or only a recent mean and important for comparison
 
 ### Some key time series summaries of variation
 
@@ -188,7 +191,7 @@ plot(ts(freq.zeros[,2], start=c(1990,1), freq=12),
 ```
 Finally an interactive plot of the variation over months can be constructed as follows:
 
-```{r multits, fig.keep='last'}
+```{r multits, fig.keep='last', warning=FALSE}
 library(plotly)
 library(tidyr)
 library(ggplot2)
@@ -228,7 +231,7 @@ From the earlier explorations regression-alike prediction models for 'ged_sb` fo
 
 1.  Fit the high probability of zero values on the data
 2.  Allow for excess variation (so large predictive variances)
-3.  Can alow future covariates like those proposed via the VIEWS codebooks.
+3.  Can alow future covariates like those proposed via the VIEWS codebooks
 
 # Tweedie distribution models
 
@@ -295,16 +298,15 @@ V(\mu )=\tau ^{\prime }[\tau ^{-1}(\mu )]
 \end{eqnarray*}
 
 This formulation is useful because it manifests some well known properties:
-\begin{itemize}
-\item It can model the excess zeros without a separate model (zero inflation) and give them their own mass or probability that matches the data \emph{a priori}. 
-\item It generalized a negative binomial, or compound Poisson process.
-\item The process can reproduce versions of a Poisson-gamma convolution to a negative binomial (a common example in Bayesian data analysis of counts).
-\item It follows a Taylor power law via the variance-to-mean scaling relationship.
-\end{itemize}
+
+- It can model the excess zeros without a separate model (zero inflation) and give them their own mass or probability that matches the data *a priori*. 
+- It generalized a negative binomial, or compound Poisson process.
+- The process can reproduce versions of a Poisson-gamma convolution to a negative binomial (a common example in Bayesian data analysis of counts).
+- It follows a Taylor power law via the variance-to-mean scaling relationship.
 
 ## Illustration
 
-To understand the basic properties of the model and its key uses in applications, consider the typical case of interest which is a random variable with an atom at zero with a small mean and large variance.  We can do this using a Tweedie distribution over various values of ${\mu,\phi,p}$.  THe following figure gives an illustration for different choices.
+To understand the basic properties of the Tweedie model and its key uses in applications, consider the typical case of interest which is a random variable with an atom at zero with a small mean and large variance.  We can do this using a Tweedie distribution over various values of ${\mu,\phi,p}$.  THe following figure gives an illustration for different choices.
 
 ```{r densityexample, include=TRUE, warning=FALSE, fig.keep='last', fig.width=8, fig.height=8}
 library(statmod)
@@ -356,7 +358,7 @@ The figure belies the extra mass computed for the probability at zero (cf. Jorge
 
 This is a stability check on the data: can we even really generalize an ED like target density?  Do the parameters of the Tweedie fitted model to the data change or stay the same over time (months)?
 
-```{r rolltw, include=TRUE}
+```{r rolltw, include=TRUE, cache=TRUE}
 library(tweedie)
 library(statmod)
 
@@ -391,9 +393,12 @@ stopCluster(cl)
 
 # Time series parameter summaries
 
-Plot summaries of the key parameters of the Tweedie models for each time period (month).
+Plot summaries of the key parameters of the Tweedie models for each time period (month).  These examine the probabilty that there are zeros and how well one can fit the baseline variance of the data using a count model.
 
-```{r summs, include=TRUE, fig.height=6, fig.keep='last'}
+
+Begin by extracting out the fitted model objects from the Tweedie models fit earlier.
+
+```{r summs, include=TRUE, fig.height=6, fig.align='center', fig.keep='last', fig.cap='Tweedie models parameters for each `cm`.  Phi is the dispersion parameter, p is the power parameter', cache=TRUE}
 # Now summarize the results
 all.tw.sum <- matrix(unlist(all.tw), ncol=2, byrow = TRUE)
 
@@ -409,7 +414,7 @@ plot(twp, main="")
 
 Now plot the probability of a zero count from the Tweedie, Poisson, and data for comparison.
 
-```{r zeropred, echo=TRUE, fig.width=6, fig.keep='last'}
+```{r zeropred, echo=TRUE, fig.width=6, fig.align="center", fig.keep='last', fig.cap='Probabilty of zero prediction from the Tweedie model compared to baseline frequency of zero.'}
 
 # Convert using Dunn and Smyth formula
 twp.convert <- sapply(1:nrow(twp), 
@@ -539,39 +544,281 @@ count.cf <- function(train, test, xi.vec = seq(1.1, 1.75, by=0.025),
 
 ```
 
-## Simple demo of the count model comparisons
+## Demo of the count models over train-test splits
 
-```{r countdemo1, echo=TRUE, warning=FALSE}
+Here a training and test set are established for forecasting and scoring.  The `train` set are the `cm` data from 2021-2023 and the `test` set are the data after January 2024. 
+
+```{r countdemo1, echo=TRUE, warning=FALSE, cache=TRUE}
 
 # Define a DV as a simple variable and a factor for the countries
 dfs$y <- dfs$ged_sb
 dfs$geo <- as.factor(dfs$country_id)
 
-# Splits and subsets
+# Splits and subsets over the relevant periods
 train <- dfs[dfs$Year>2020 & dfs$Year < 2024,]
 test <- dfs[dfs$Year>2023,]
 
 # Now fit models over the subsets
-system.time(count.out <- count.cf(train, test, N=1000))
+N <- 100
+system.time(count.out <- count.cf(train, test, N=N))
 
 ```
 
 
-### Count regressions with GAM / splines / GLMMs
+The results are in the `count.out` object.  This is list with one set of `N` predictions for each country (191) for each month (12).
 
-This section demonstrates the approach taken in Brandt (2024).   Here an illusration of a basic model with GAM / GLMM components are illustrated and then compared to the earlier section's analyses.
+```{r strc, echo=TRUE}
+cat("Structure of the count.out\n")
+str(count.out)
 
-# Scoring forecasts
+cat("\n\n")
 
-Here's how one can compute scoring rules to rank the forecasts from each of the models.  This is akin to Brandt (n.d.).
+cat("Structure of the test \n")
+str(test[,c(1,2,4)])
+```
 
-### Scoring with simple metrics
+So the row here correspond to the country-months for 2024 and the columns are the `N` predictions.
 
-- RMSE
-- Divergence
-- Brier Scores
-- AUROC
-- CRPS
+
+<!-- ### Count regressions with GAM / splines / GLMMs -->
+
+<!-- This section demonstrates the approach taken in Brandt (2024).   Here an illusration of a basic model with GAM / GLMM components are illustrated and then compared to the earlier section's analyses. -->
+
+# Practical Forecast Scoring
+
+## Basics of Scoring Forecasts
+
+Assumed steps for a forecast target:
+
+1.  Data are split into training and test sets (if you have no true future values).
+
+    1.  Could be future values in time.
+    2.  Might be some sampled values
+    3.  Cross-validation (CV) or leave-out-observations (LOO) are othere ways.
+
+2.  Use the training data to fit a model and generate predictions over the test set.
+
+3.  Compare the predictions over the observations or cases in the test set to the predictions based on the training set. *This is the scoring task.*
+
+    Key complication: keeping honest about the information that is segmented in the training and test sets.
+
+
+## Scoring forecasts
+
+Here's how one can compute scoring rules to rank the forecasts from each of the models.  This is akin to [Brandt (n.d.)](https://github.com/PTB-OEDA/VIEWS2-DensityForecasts) which are baseline GAM and GLMM models for the same data (albeit different training-test splits).  The task here is to statistically summaize the comparison of the forecasts to the observed or `test` data for model selection and evaluation.
+
+## Scoring with simple metrics
+
+The goal here is to compare each of the models produced in the last section to the data in the `test` set.  So there are a sample of predictions from each of the five models (labeled  `P`, `NB`, `ZIP`, `ZINB`, and `TW` earlier).  
+
+A simple first comparison is just to look at the summaries of each of the 5 forecast models compared to the observed values for each country-month.  
+
+- Series of scatter, QQ, and then ECDF plots for the models.
+- Various metrics for these.
+
+```{r summary_forcs, fig.keep='last', fig.align='center', fig.width=6, fig.height=4, fig.cap="2024 `cm` Mean Poisson Predictions versus Actuals"}
+# Poisson means for each country-month merged with `test`
+tmp <- data.frame(test, PoissonPred = rowMeans(count.out$P))
+
+par(mfrow=c(1,3))
+plot(tmp$PoissonPred, tmp$y, 
+     xlab="Mean Poisson Predictions", ylab="Actuals", main = "Scatterplot")
+qqplot(tmp$PoissonPred, tmp$y, xlab="Mean Poisson Predictions",
+       ylab="Actuals", main = "QQ plot")
+plot(ecdf(tmp$PoissonPred), 
+     xlab="Mean Poisson Predictions", ylab="Cumulative  Density", main="ECDF")
+lines(ecdf(tmp$y), col="red")
+legend("bottomright", legend=c("Poisson", "Actual"), col=1:2, lwd=2)
+
+```
+
+## Forecast Formatting
+
+Recall though that one can use the sample of `N = 100` draws of the forecasts for each `cm` to construct various other metrics for performance by units (countries, time or both).  To see this, consider making a dataset of the `N`` predictions for the Poisson model for each of the `cm` in 2024.  This is done like this:
+
+```{r merge_cm_pred}
+#### Forecasts formatting setup ####
+# This is different than in some other applications, but the logic is meant
+# to be clear here.
+
+# Add case idtenifiers to the forecasts
+forecast.P <- cbind(test[,c(1,2)], count.out$P)   # Poisson model ones
+forecast.TW <- cbind(test[,c(1,2)], count.out$TW) # Tweedie ones
+
+# Now, reshape these into a `long` format where 
+# rows are a cm forecast by model
+
+P.stacked <- reshape(forecast.P, 
+                     direction = "long",
+                     varying = list(names(forecast.P)[3:(N+2)]),
+                     v.names = "predicted",
+                     idvar = c("month_id", "country_id"),
+                     timevar = "sample_id",
+                     times = 1:N)
+P.stacked$model <- "Poisson"
+
+TW.stacked <- reshape(forecast.TW, 
+                      direction = "long",
+                      varying = list(names(forecast.TW)[3:(N+2)]),
+                      v.names = "predicted",
+                      idvar = c("month_id", "country_id"),
+                      timevar = "sample_id",
+                      times = 1:N)
+TW.stacked$model <- "Tweedie"
+
+# Cleanup
+rm(forecast.P, forecast.TW)
+
+# Now merge forecasts with the test data
+P.stacked <- merge(P.stacked, test,
+                   by.x = c("month_id", "country_id"),
+                   by.y = c("month_id", "country_id"))
+TW.stacked <- merge(TW.stacked, test,
+                    by.x = c("month_id", "country_id"),
+                    by.y = c("month_id", "country_id"))
+
+# Some reorg for below
+all.stacked <- rbind(P.stacked, TW.stacked)
+all.stacked$observed <- all.stacked$y
+
+rm(P.stacked, TW.stacked)
+
+```
+
+This set of `*.stacked` objects are now the items needed to score the forecasts in terms of RMSE, Brier scores, continuous rank probability scores (CRPS), etc.
+
+The earlier forecast comparisons were for the mean forecasts over the `N` draws of the forecast distribution(s) for each `cm`.  One can look at the stacked set of forecast samples to see how these differ:
+
+
+```{r summary_forcs_density, fig.keep='last', fig.align='center', fig.width=6, fig.height=4, fig.cap="2024 `cm` Tweedie Density Predictions versus Actuals"}
+
+# Tweedie density for each country-month merged with `test`
+
+par(mfrow=c(1,3))
+plot(all.stacked[all.stacked$model=="Tweedie",c(4,22)],  pch=".",
+     xlab="Tweedie Predictions", ylab="Actuals", main = "Scatterplot")
+
+qqplot(x = all.stacked[all.stacked$model=="Tweedie",4],
+       y = all.stacked[all.stacked$model=="Tweedie",22],
+       pch=".",
+       xlab="Tweedie Predictions",
+       ylab="Actuals", main = "QQ plot")
+plot(ecdf(all.stacked[all.stacked$model=="Tweedie",4]), 
+     xlab="Tweedie Predictions", ylab="Cumulative  Density", main="ECDF")
+lines(ecdf(tmp$y), col="red")
+legend("bottomright", legend=c("Tweedie", "Actual"), col=1:2, lwd=2)
+
+```
+### Metrics for Forecast evaluation
+
+|   | Meteorology, Finance | Macroeconomics | Conflict Early Warning, Conflict Dynamics |
+|------------------|:-----------------|:-----------------|:-----------------|
+| Point Metrics | RMSE, MAE | RMSE, MAE | RMSE, MAE, ROC Curves |
+| Interval | Scoring Rules | Fan Charts | none |
+| Density | VRHs, CRPS PITs, Sharpness Diagrams | LPSs, PITs | none |
+
+Selected Tools for Forecast Evaluation. CRPS, RMSE, MAE, VRH, LPS, and PIT denote Continuous Rank Probability Score, Root Mean Square Error, Mean Absolute Error, Verification Rank Histogram, Log Predictive Score, and Probability Integral Transform, respectively.
+
+### Point forecasts
+
+Consider this figure:
+
+```{r putfig, echo=FALSE, fig.align='center', fig.keep='last'}
+
+plot(density(rnorm(1e6, sd=0.45)), main="", xaxt ="n",
+     xlab = "", ylab = "Density", col="red")
+lines(density(rnorm(1e6, sd=1)), col="blue")
+legend(-1.5, 0.75, c("A", "B"), lty=1, lwd=2, col=c("red","blue"))
+#axis(1, 0, "A", col="red")
+#axis(1, 1, "B", col="blue")
+
+```
+
+It shows how two analysts (models) could produce the same point (mean) forecast and hence the same prediction error. But, in fact, one analyst, A, assigns much more probability than the other, B, to values of the variable between the modal predictions.
+
+Using point metrics like RMSE leads one to conclude the two analysts perform equally well when, in fact, from a probabilistic standpoint, analyst A is the better "horse.''
+
+### Root MSE
+
+Say the model is $Y_t = \alpha + \beta X_t + \epsilon_t$ with $\epsilon_t \sim N(0, \sigma^2)$ for $t = 1, \ldots, T$.
+
+The estimate of the model's error variance is
+
+$$ 
+\hat{s}^2 = \frac{1}{T-2} \sum^{T}_{t=1}(Y_t-\hat{Y_t})^2
+$$
+
+where $\widehat{Y}_t$ is the period $t$ prediction.
+
+For the one step ahead point estimate at $T+1$, the estimated forecast error variance is:
+
+$$
+\hat{s}^2_f = s^2 \left[1 + \frac{1}{T} +
+\frac{(X_{T+1}-\bar{X})^2}{\sum^{T}_{i=1}(X_t-\bar{X})^2}\right]
+$$
+
+So we use this last quantity to get the forecast RMSE as $s_f$.
+
+### Problems with RMSE
+
+As a tool for ranking forecasts RMSE has problems (Armstrong and Collopy 1992):
+
+*Lack of reliability:* Rankings of models based on RMSE are uncorrelated across levels of temporal aggregation and time horizons
+
+*Sensitivity to outliers:* RMSE can vary widely if there are outliers in the data.
+
+*Lack of Construct Validity:* RMSE ranks uncorrelated with ranks from other metrics and with consensus ranks.
+
+As indicative of underlying forecast density. Only under some strong assumptions, e.g., underlying DGP is normally distributed. But stylized facts about conflict dynamics suggest underlying density is not normal.
+
+## Calibration & Sharpness
+
+1.  Calibration: statistical consistency between the forecast and observations
+
+2.  Sharpness: the concentration (coverage) of the predictive distribution
+
+The goal of probabilistic forecasting is to achieve a high degree of sharpness subject to calibration (Gneiting et al. 2007). A suite of tools is used to determine whether this goal has been achieved.
+
+How this is done and interpreted is an ongoing research topic, per [Hullman (2024)](https://statmodeling.stat.columbia.edu/2024/11/15/calibration-for-everyone-and-every-decision-maybe/)
+
+## CRPS: measures calibration and sharpness
+
+-   It measures the squared difference between the total areas of the predicted and observed cumulative distributions
+
+-   Smaller values are better, since it means these distributions are similar
+
+-   It is measured in units of the forecasted variable so you can only compare the CRPS for the same variable
+
+## CRPS formula
+
+Let the forecast variable of interest again be denoted by $x$, the observed value of the variable by $x_a$, and the analyst's (or model's) pdf by $\rho(x)$. The CRPS is $$\begin{aligned}
+CRPS(P,x_a)=\displaystyle{\int_{-\infty}^{\infty}}[P(x)-P_a(x)]^2dx,
+\end{aligned}$$
+
+where $P$ and $P_a$ are the cumulative distributions:
+
+$$\begin{aligned}
+P(x) &= \int_{-\infty}^{x}\rho(y)dy\\
+P_a(x) &= H(x-x_a).
+\end{aligned}$$
+
+Here, $H$ is the Heaviside function: $H(x-x_a) = 0$ if $(x-x_a)<0$ and $H(x-x_a) = 1$ if $(x-x_a) \ge 0$.
+
+(If that is more calculus than you like, its just a fancy way to count. See the next slide).
+
+## A CRPS Visual
+
+![Example from Hegre et al. (2024; Figure 3)](Hegreetal2024-Fig3.png) Notice then that an "aggregate" CRPS is made up of sums of the various grey areas described above.
+
+## CRPS in practice
+
+-   In application, an average of the score often is calculated over this set of forecasts or grid points, $k$: $$
+    \overline{CRPS} = \sum_{k}w_kCRPS(P_k,x_{a}^{k})
+    $$ where $w_k$ are weights set by the forecaster (typically, $w_k = \frac{1}{k}$).
+
+-   CRPS scores will typically differ from RMSE and MAE forecast metrics rankings. This is because they are scoring the congruence of the full forecast density to the observed data.
+
+Forecast scoring or metrics measure how well the forecast (denisty) compares to the obsereved data over the test horizon or cases.  
 
 ### CRPS
 
@@ -588,21 +835,283 @@ print(unlist(check.crps), digits = 3)
 
 ```
 
+So in this application and example the *negative binomial* models have the best CRPS scores.  
+
+
+Contrast this with what you would get from using the full densities in the `scoringutils` package. Another example here:
+
+```{r scored_demo, echo=TRUE}
+system.time(scored.out <- score(as_forecast_sample(all.stacked,
+                                forecast_unit = c("model", "month_id", "isoab"))))
+
+# Get summaries by correct units of evaluation
+library(magrittr)
+library(dplyr)
+
+crps <- scored.out %>% 
+  summarise_scores(by=c("model", "month_id"), na.rm=TRUE) %>%
+  select(c("model", "month_id", "crps"))
+
+print(crps)
+```
+
+So this now shows the model-specific CRPS metrics for the time periods.
+
+Additional examples deploying CRPS metrics across models are [here](https://github.com/PTB-OEDA/VIEWS2-DensityForecasts/blob/main/Brandt-VIEWS2-Estimation.Rmd)
+
+Another metric example would be across the countries `se_mean` which is the RMSE:
+```{r rmse, echo=TRUE}
+rmse <- scored.out %>% 
+  summarise_scores(by=c("model", "isoab"), na.rm=TRUE) %>%
+  select(c("model", "isoab", "se_mean"))
+
+head(rmse)
+str(rmse)
+```
+
+This gives back the `rmse` for each country over the time periods for each of the two models.
+
 ## Metrics over time horizons
+
+Here is how to convert the scores from the `scoringutils` functions to a time series:
+
+```{r crps_ts, echo=TRUE, fig.keep='last', warning=FALSE, fig.align='center', fig.width=6, fig.height=4, fig.cap="CRPS Time Series. Lower scores are better!"}
+# Make a time series of the CRPS for each model / forecast period
+crps.ts <- scored.out %>% select(c("model", "month_id", "crps")) %>% arrange(model, month_id)
+
+# Arrange the time series and add names
+tmp <- crps.ts %>% summarise_scores(by=c("model", "month_id"))
+mnames <- unique(tmp$model)
+crps.ts1 <- matrix(tmp$crps, ncol=length(mnames))
+colnames(crps.ts1) <- mnames
+
+crps.ts1 <- ts(crps.ts1, start=c(2024,1), freq=12)
+
+# These are the annualized CRPS to compare to their metrics
+# So this is all the years and models.
+
+plot(crps.ts1, plot.type="s", lty=1:2, ylab="CRPS Sum")
+legend("topleft", legend = mnames, lty=1:2)
+
+```
+
+<!-- ## Additions one can consider -->
+
+<!-- 1.  Do the same for other scores and metrics. -->
+<!-- 2.  Make other relevant subsets of all of this. (What are these?) -->
+<!-- 3.  Consider diagrams in the Brandt (2024) paper "Evaluating and Scoring in Conflict and Violence Forecasts": -->
+<!--     1.  Taylor Diagrams -->
+<!--     2.  Standard deviation ratios -->
+<!--     3.  Other metrics. -->
+
+<!-- See Dietze, M. C. (2017). [Ecological Forecasting](https://doi.org/10.2307/j.ctvc7796h) Princeton University Press. -->
+
+<!-- ## Taylor Diagrams -->
+
+<!-- Taylor diagrams [@Taylor2001] are a visual tool that plot the standardized relative variance of the forecasts to the data at $(1,0)$ in a Cartesian $2^D$ plane. -->
+
+<!-- -   The x-axis is then the relative variance of the data and the y-axis is the relative variance of the forecasts -->
+
+<!-- -   This can also be done for the unstandardized data too. -->
+
+<!-- -   The corresponding circular arcs and the angles of the points for each conditional forecast relative to the data in such a plot then measure the correlation of the two quantities of interest -->
+
+<!-- -   plot demonstrates the root mean squared error differences in the forecasts and the data as a function of their (relative) standard deviations and correlation. -->
+
+<!-- -   This can then be conditioned over the posterior forecast sample attributes (models, time periods, etc.). -->
+
+<!-- ## Taylor Diagram math -->
+
+<!-- This figure places the normalized standard deviation of the data on the x-axis and compares it to the normalized standard deviation of the forecasts on the y-axis. -->
+
+<!-- Based on the law of cosines these quantities can be used to relate the correlation and the standard deviation of the data and the forecasts. -->
+
+<!-- For two variables $X$ and $Y$, the centered root mean squared error (CRMSE) is -->
+
+<!-- $$ -->
+<!-- \begin{aligned} -->
+<!--     CRMSE(X,Y) &= \sqrt{\frac{1}{n} \sum_{i=1}^n [(x_i - \mu_x)(y_i - \mu_y)]^2}\\ -->
+<!--     CRMSE(X,Y)^2 &= \sigma_X^2 + \sigma_Y^2  - 2\sigma_X \sigma_Y R_{XY} -->
+<!-- \end{aligned} -->
+<!-- $$ -->
+
+<!-- where $R_{XY}$ is the correlation of $X$ and $Y$. -->
+
+<!-- Using the law of cosines $c^2 = a^2 + b^2 - 2ab \cdot cos(\theta)$, where $\theta = -->
+<!--   arccos(R_{XY})$. -->
+
+<!-- For details on implementation, see [@ANZEL2023107843,@openair] -->
+
+<!-- ## Taylor Diagram example code -->
+
+<!-- ```{r taylordemo, echo=TRUE} -->
+<!-- #### Taylor diagram #### -->
+
+<!-- library(openair) -->
+
+<!-- # Normalized Taylor diagrams -->
+
+<!-- TaylorDiagram(forcs[forcs$model!="Poisson GAM" & -->
+<!--                       forcs$model!="Neg Binom GAM" & -->
+<!--                       forcs$model!="Tweedie GAM",], -->
+<!--               obs="observed", mod="predicted", -->
+<!--               group=c("model"), type = "year", -->
+<!--               key.title = "Model", -->
+<!--               normalise=TRUE, -->
+<!--               main = "Normalized Taylor Diagram") -->
+
+<!-- # UN-Normalized Taylor diagram for GLMMs -->
+
+<!-- TaylorDiagram(forcs[forcs$model!="Poisson GAM" & -->
+<!--                       forcs$model!="Neg Binom GAM" & -->
+<!--                       forcs$model!="Tweedie GAM",], -->
+<!--               obs="observed", mod="predicted", -->
+<!--               group=c("model"), type = "year", -->
+<!--               key.title = "Model", -->
+<!--               normalise=FALSE, -->
+<!--               main = "Unnormalized Taylor Diagram") -->
+
+
+<!-- # Drop 2023 -->
+<!-- TaylorDiagram(forcs[forcs$model!="Poisson GAM" & -->
+<!--                       forcs$model!="Neg Binom GAM" & -->
+<!--                       forcs$model!="Tweedie GAM" &  -->
+<!--                       forcs$year < 2023,], -->
+<!--               obs="observed", mod="predicted", -->
+<!--               group=c("model"), type = "year", -->
+<!--               key.title = "Model", -->
+<!--               normalise=TRUE, -->
+<!--               main = "Normalized Taylor Diagram") -->
+
+<!-- # # Experimenting... -->
+<!-- TaylorDiagram(forcs[forcs$model!="Poisson GAM" & -->
+<!--                       forcs$model!="Neg Binom GAM" & -->
+<!--                       forcs$model!="Tweedie GAM",], -->
+<!--               obs="observed", mod="predicted", -->
+<!--               group=c("model", "country_id"), type = "year", -->
+<!--               key.title = "Model", -->
+<!--               normalise=TRUE, -->
+<!--               main = "") -->
+
+<!-- TaylorDiagram(forcs[forcs$model!="Poisson GAM" & -->
+<!--                       forcs$model!="Neg Binom GAM" & -->
+<!--                       forcs$model!="Tweedie GAM",], -->
+<!--               obs="observed", mod="predicted", -->
+<!--               group=c("model", "year")) -->
+
+<!-- ``` -->
+
+<!-- ## Standard Deviation Ratios -->
+
+<!-- Ratio of the model prediction standard deviations to the observed. The idea is from @dietze2017ecological: -->
+
+<!-- ```{r othercode, echo=TRUE, fig.align='center', fig.keep='all'} -->
+<!-- #### SD Ratios #### -->
+<!-- model.ses <- scored.out %>% -->
+<!--   summarise_scores(by = c("model", "month_id"), na.rm=TRUE) %>% -->
+<!--   group_by(model) %>% select(model, se_mean, month_id) %>% arrange(model, month_id) -->
+
+<!-- # Organize and label columns with model names -->
+<!-- mdls <- unique(model.ses$model) -->
+<!-- sd.model <- matrix(sqrt(model.ses$se_mean), ncol=length(mdls)) -->
+<!-- colnames(sd.model) <- mdls -->
+
+<!-- # Get the relevant time series setup -->
+<!-- sd.model <- ts(sd.model, start=c(2018,1), freq=12) -->
+<!-- sd.obs <- window(roll.ged.sb[,3], start=c(2018,1), end=c(2023,12)) -->
+
+<!-- # Plot the SDs -->
+<!-- par(mfcol=c(3,2)) -->
+<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2018,1), end=c(2018,12)), -->
+<!--      plot.type = "single", col=1:6, lwd=2, -->
+<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD]), -->
+<!--      main="Standard deviation ratios, 2018") -->
+<!-- abline(h=1, lty=2) -->
+<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2019,1), end=c(2019,12)), -->
+<!--      plot.type = "single", col=1:6, lwd=2, -->
+<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD]), -->
+<!--      main="Standard deviation ratios, 2019") -->
+<!-- abline(h=1, lty=2) -->
+
+<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2020,1), end=c(2020,12)), -->
+<!--      plot.type = "single", col=1:6, lwd=2, -->
+<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD]), -->
+<!--      main="Standard deviation ratios, 2020") -->
+<!-- abline(h=1, lty=2) -->
+<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2021,1), end=c(2021,12)), -->
+<!--      plot.type = "single", col=1:6, lwd=2, -->
+<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD]), -->
+<!--      main="Standard deviation ratios, 2021") -->
+<!-- abline(h=1, lty=2) -->
+
+<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2022,1), end=c(2022,12)), -->
+<!--      plot.type = "single", col=1:6, lwd=2, -->
+<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD]), -->
+<!--      main="Standard deviation ratios, 2022") -->
+<!-- abline(h=1, lty=2) -->
+<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2023,1), end=c(2023,12)), -->
+<!--      plot.type = "single", col=1:6, lwd=2, -->
+<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD]), -->
+<!--      main="Standard deviation ratios, 2023") -->
+<!-- abline(h=1, lty=2) -->
+
+
+<!-- # Now can add / contrast the prediction errors with the data and its -->
+<!-- # observed volatility... -->
+
+<!-- par(mfcol=c(2,2), mar=c(4,4,1,1)) -->
+<!-- plot(window(roll.ged.sb[,2], start=c(2018,1), end=c(2022,12)), ylab="Mean Counts") -->
+<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2018,1), end=c(2022,12)), -->
+<!--      plot.type = "single", col=1:6, lwd=2, -->
+<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD])) -->
+<!-- abline(h=1, lty=2) -->
+<!-- plot(window(roll.ged.sb[,2], start=c(2023,1), end=c(2023,12)), ylab="Mean Counts") -->
+<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2023,1), end=c(2023,12)), -->
+<!--      plot.type = "single", col=1:6, lwd=2, -->
+<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD])) -->
+<!-- abline(h=1, lty=2) -->
+
+
+<!-- ``` -->
 
 ## Benchmarks comparisons
 
+Add examples here of comparisons to VIEWS benchmarks?
+
 ## Skill scores
+How to get skill scores for say CRPS and RMSE metrics:
+
+```{r skill_scores, echo=TRUE}
+get_pairwise_comparisons(scored.out)
+
+```
+
+The same by `month_id`:
+```{r skill_scores_paired, echo=TRUE}
+get_pairwise_comparisons(scored.out, by="month_id")
+
+```
+
+## Setting up other baselines
+
+- Add more of the models to the section where the models are stacked.
+
+- Comparisons to other VIEWS baseline models are addressed [here](https://github.com/PTB-OEDA/VIEWS2-DensityForecasts/blob/main/baseline-views-forecasts.R)
 
 # `cm` models with covariates
 
+Add models in this section with covariates.
+
 ## Climate
+
+Replicate something from above with say rainfall or some other climate measure.
 
 ## Demography
 
+Use a demographic covariate in a model like log(IMR).
+
 ## Civil-Military Expenditures
 
+Include a civ-mil expenditure covariate.
 
-<!-- # PRIO-Grid Month (`pgm`) Data setup -->
-
-<!-- ## Analyses like above for some `pgm` -->
+# References

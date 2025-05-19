@@ -10,6 +10,8 @@ This is a simple demo for getting started with the VIEWS data in `R`.
 
 [Getting Started with the VIEWS data tutorial](https://github.com/PTB-OEDA/VIEWS-Startup/blob/main/Brandt-VIEWS2-Demo.md)
 
+[Learning about Tweedie and Exponential Dispersion Models](TBD)
+
 It lets you do things like
 
 1. Download the basic `cm` or country-month data
@@ -18,8 +20,6 @@ It lets you do things like
 4. Evaluates parametric density changes in the data using Tweedie models.
 5. Generate some forecasts over a training set.
 6. Compare the forecasts from the training set model to actual data.
-
-
 
 
 Other relevant documents to understand the data are here:

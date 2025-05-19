@@ -2,7 +2,7 @@ VIEWS Data Setup and Modeling Demo
 ================
 Patrick T. Brandt
 
-March 26, 2025
+May 18, 2025
 
 - [Introduction](#introduction)
 - [Country-Month Data setup](#country-month-data-setup)
@@ -11,15 +11,37 @@ March 26, 2025
 - [Basic Time Series Plots of all the SB killings
   data](#basic-time-series-plots-of-all-the-sb-killings-data)
 - [Distributional summaries](#distributional-summaries)
-  - [Fit Tweedie models](#fit-tweedie-models)
-  - [Time series parameter summaries](#time-series-parameter-summaries)
+  - [Simple model choices for `cm`
+    data](#simple-model-choices-for-cm-data)
+- [Tweedie distribution models](#tweedie-distribution-models)
+  - [Definition](#definition)
+  - [Properties](#properties)
+  - [Illustration](#illustration)
+- [Tweedie models for ’`cm` data](#tweedie-models-for-cm-data)
+- [Time series parameter summaries](#time-series-parameter-summaries)
 - [Simple prediction models](#simple-prediction-models)
-  - [Simple demo of the count model
-    comparisons](#simple-demo-of-the-count-model-comparisons)
-- [Scoring forecasts](#scoring-forecasts)
-- [PRIO-Grid Month (`pgm`) Data setup](#prio-grid-month-pgm-data-setup)
-  - [Analyses like above for some
-    `pgm`](#analyses-like-above-for-some-pgm)
+  - [Demo of the count models over train-test
+    splits](#demo-of-the-count-models-over-train-test-splits)
+- [Practical Forecast Scoring](#practical-forecast-scoring)
+  - [Basics of Scoring Forecasts](#basics-of-scoring-forecasts)
+  - [Scoring forecasts](#scoring-forecasts)
+  - [Scoring with simple metrics](#scoring-with-simple-metrics)
+  - [Forecast Formatting](#forecast-formatting)
+  - [Calibration & Sharpness](#calibration--sharpness)
+  - [CRPS: measures calibration and
+    sharpness](#crps-measures-calibration-and-sharpness)
+  - [CRPS formula](#crps-formula)
+  - [A CRPS Visual](#a-crps-visual)
+  - [CRPS in practice](#crps-in-practice)
+  - [Metrics over time horizons](#metrics-over-time-horizons)
+  - [Benchmarks comparisons](#benchmarks-comparisons)
+  - [Skill scores](#skill-scores)
+  - [Setting up other baselines](#setting-up-other-baselines)
+- [`cm` models with covariates](#cm-models-with-covariates)
+  - [Climate](#climate)
+  - [Demography](#demography)
+  - [Civil-Military Expenditures](#civil-military-expenditures)
+- [References](#references)
 
 # Introduction
 
@@ -42,35 +64,30 @@ Now these are compressed, which means there are only data for all
 observations that are observed.
 
 *If you run your own version of this, you will likely need to change the
-paths to the input files.* You can get the codebooks and input files
-[here](https://www.dropbox.com/scl/fo/rurpcmtpcquni5onoyuus/AI6p3CLXEGrRVak2wEsTgAM/codebooks?rlkey=v1o4va647qrwc4la7m8i7cedk&subfolder_nav_tracking=1&st=lnki2qvf&dl=0).
+paths to the input files.* Here are links for the
+[codebooks](https://viewsforecasting.org/wp-content/uploads/cm_features_competition.pdf)
+or
+[here](https://www.dropbox.com/scl/fo/rkj4ttawoz9pv6x35r9cq/ACNAhhWCn6wCJvSv8ZeyMu4/cm_level_data?dl=0&preview=ideas_fastforward_2025_cm_features.pdf&rlkey=44eg0kk4w8yh8tm1f53vvpzps&subfolder_nav_tracking=1)
+and [input
+files](https://www.dropbox.com/scl/fo/rkj4ttawoz9pv6x35r9cq/APSd_RJxvk-fpNAteD4J1iY?rlkey=44eg0kk4w8yh8tm1f53vvpzps&e=1&st=r0qv5cz1&dl=0).
 
 ``` r
 # CM level data: features and outcomes
-dl_link <- "https://www.dropbox.com/scl/fo/rurpcmtpcquni5onoyuus/AM3DF4JXxM3cthQLt-S4pnE/features/cm/cm_features.parquet?rlkey=v1o4va647qrwc4la7m8i7cedk&e=1&st=wtqiw2z5&dl=1"
-destfile <- "cm_features.parquet"
+dl_link <- "https://www.dropbox.com/scl/fo/rkj4ttawoz9pv6x35r9cq/ACi53p087OvQUke0pIg88pg/cm_level_data/cm_data_121_542.parquet?rlkey=44eg0kk4w8yh8tm1f53vvpzps&dl=1"
+
+destfile <- "cm_data_121_542.parquet"
 
 # DL with curl
 curl::curl_download(url = dl_link, destfile = destfile)
 
 # For the parquet files load the `arrow` package
 library(arrow)
-```
 
-    ## Some features are not enabled in this build of Arrow. Run `arrow_info()` for more information.
-
-    ## 
-    ## Attaching package: 'arrow'
-
-    ## The following object is masked from 'package:utils':
-    ## 
-    ##     timestamp
-
-``` r
 # This is the main data file
-cm <- read_parquet("cm_features.parquet")
+cm <- read_parquet("cm_data_121_542.parquet")
 
 # Get the list of country names as well to add to the data
+# These are from the main VIEWS site
 dl_link2 <- "https://www.dropbox.com/scl/fo/rurpcmtpcquni5onoyuus/AGeR6dD-Ru-Emwn06HnKAE8/matching_tables?preview=countries.csv&rlkey=v1o4va647qrwc4la7m8i7cedk&subfolder_nav_tracking=1&st=goucd0hg&dl=1"
 
 destfile2 <- "country.zip"
@@ -94,7 +111,8 @@ month_ids <- read.csv("month_ids/month_ids.csv", header = TRUE)
 ```
 
 (Note the above will also have downloaded the `pgm` items for the months
-and the countries, so this is available for later processing.)
+and the countries, so this is available for later processing. Adding the
+`pgm` training data would need to be added to the above if desired.)
 
 ## Basic data manipulation for country-months
 
@@ -107,7 +125,8 @@ identifications. This is a set of `merge` commands using base R.
 df1 <- subset(cm, select = c(month_id, country_id,
                              gleditsch_ward,
                              ged_sb, ged_ns, ged_os, 
-                             acled_sb, acled_sb_count, acled_os))
+                             acled_sb, acled_sb_count,
+                             acled_os))
 
 # Merge on the country label data
 dfs <- merge(df1, countries, 
@@ -118,12 +137,17 @@ dfs <- merge(dfs, month_ids[,2:4],
              by.x = "month_id", by.y="month_id")
 
 # Clean up
-rm(df1,cm)
+rm(df1)
 ```
 
 # Basic Time Series Plots of all the SB killings data
 
-This summarizes and plots the GED state-based (SB) deaths series.
+This summarizes and plots the GED state-based (SB) deaths series. The
+goal in the next part is to
+
+1.  extract the data by month
+2.  sumamrize the mean and standard deviation for each month
+3.  Plot these monthly statistics as time series
 
 ``` r
 #### Simple plots as checks ####
@@ -136,17 +160,21 @@ sbdata <- vector(mode="list", length=length(ms))
 
 for(i in 1: length(ms))
 {
+  # Subset out one month of data at a time
   sb <- dfs[dfs$month_id==ms[i],]$ged_sb 
   sbdata[[i]] <- as.vector(unlist(sb))
+  
+  # Compute and store monthly means and sd
   roll.ged.sb[i,] <- c(ms[i], mean(sbdata[[i]]), sd(sbdata[[i]]))
 }
 
 rm(sb)
 
+# Declare as time series and add variable names
 roll.ged.sb <- ts(roll.ged.sb[,2:3], start=c(1990,1), freq=12)
-
 colnames(roll.ged.sb) <- c("Mean SB", "Std.Dev. SB")
 
+# Plot the results
 plot(roll.ged.sb, lwd=2, col=1:2, main="", 
      cex.lab=0.9, cex.axis=0.7)
 ```
@@ -157,45 +185,426 @@ plot(roll.ged.sb, lwd=2, col=1:2, main="",
 
 Here we look at the main variable from GED, the state-based deaths in
 the `ged_sb` variable. (This can be repeated later for the other target
-measures in the `dfs` object.)
-
-One can generate the `Unknown Pleasures` plot using the demo from
-[here](https://cran.r-project.org/web/packages/ggridges/vignettes/introduction.html).
+measures in the `dfs` object.). Here we compute the summarize the main
+quantiles from the 75th to the 99th:
 
 ``` r
-library(dplyr)
+sb_quantiles <- by(dfs$ged_sb, dfs$Year, quantile, 
+                   probs=c(0.75,0.85,0.95,0.99))
+
+print(sb_quantiles)
 ```
 
-    ## 
-    ## Attaching package: 'dplyr'
+    ## dfs$Year: 1990
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  55.65 642.86 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 1991
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  52.85 587.10 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 1992
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  50.00 446.27 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 1993
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  47.00 501.92 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 1994
+    ##   75%   85%   95%   99% 
+    ##   0.0   0.0  57.0 477.9 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 1995
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  55.00 385.71 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 1996
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  40.00 309.28 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 1997
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  58.00 340.28 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 1998
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  61.85 423.42 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 1999
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  62.85 367.83 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2000
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  61.50 286.75 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2001
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  46.25 229.13 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2002
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  37.40 262.92 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2003
+    ##   75%   85%   95%   99% 
+    ##   0.0   0.0  33.0 170.7 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2004
+    ##   75%   85%   95%   99% 
+    ##   0.0   0.0  44.0 157.6 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2005
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  24.00 153.35 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2006
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  27.00 209.85 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2007
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  28.65 202.99 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2008
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  29.00 437.46 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2009
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  34.00 401.05 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2010
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  22.00 316.89 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2011
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  36.00 299.84 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2012
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  40.45 412.35 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2013
+    ##    75%    85%    95%    99% 
+    ##   0.00   0.00  31.00 396.38 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2014
+    ##     75%     85%     95%     99% 
+    ##    0.00    0.00   59.45 1129.82 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2015
+    ##     75%     85%     95%     99% 
+    ##    0.00    1.00   61.35 1094.36 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2016
+    ##     75%     85%     95%     99% 
+    ##    0.00    0.35   74.00 1079.13 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2017
+    ##     75%     85%     95%     99% 
+    ##    0.00    1.00   55.45 1260.15 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2018
+    ##    75%    85%    95%    99% 
+    ##   0.00   1.00  52.00 493.51 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2019
+    ##    75%    85%    95%    99% 
+    ##   0.00   1.00  47.00 363.53 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2020
+    ##    75%    85%    95%    99% 
+    ##   0.00   1.00  55.45 511.45 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2021
+    ##    75%    85%    95%    99% 
+    ##   0.00   1.00  63.45 621.72 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2022
+    ##    75%    85%    95%    99% 
+    ##   0.00   2.00  76.00 345.03 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2023
+    ##    75%    85%    95%    99% 
+    ##   0.00   2.00  70.00 453.81 
+    ## ------------------------------------------------------------ 
+    ## dfs$Year: 2024
+    ##     75%     85%     95%     99% 
+    ##    0.00    4.00  106.35 1275.08
 
-    ## The following objects are masked from 'package:stats':
-    ## 
-    ##     filter, lag
+Of note here is that the lower 75th to 85th percentile of the
+distribution is zeros in almost all of the training data. In recent
+years this increases slightly. But this is why baseline predictions of
+zero or only a recent mean and important for comparison
 
-    ## The following objects are masked from 'package:base':
-    ## 
-    ##     intersect, setdiff, setequal, union
+### Some key time series summaries of variation
+
+To better see the changes in the data over time, consider the standard
+deviation time series plot given earlier. This plot seems to indicate
+that in more recent years of the training data the variance is larger. A
+quick way to see this is to look at the *logarithm* of the standard
+deviation:
 
 ``` r
+plot(log(roll.ged.sb[,2]), ylab="")
+```
+
+<div class="figure" style="text-align: center">
+
+<img src="Brandt-VIEWS2-Demo_files/figure-gfm/logstd_plot-1.png" alt="Log Standard Deviation in GED state-based"  />
+<p class="caption">
+
+Log Standard Deviation in GED state-based
+</p>
+
+</div>
+
+A further key distributional property of the training data (that should
+be part of any model) is that the probability of zero events is high (as
+would be the case given the last section). To see this, consider
+
+``` r
+freq.zeros <- aggregate(dfs$ged_sb==0, by=list(dfs$month_id), mean)
+
+# Poisson predictions make no sense
+# range(dpois(0, lambda=roll.ged.sb[,1]))
+
+plot(ts(freq.zeros[,2], start=c(1990,1), freq=12),
+     plot.type="single", lwd=2, col=2, ylab = "Pr(ged_sb=0)")
+```
+
+<div class="figure" style="text-align: center">
+
+<img src="Brandt-VIEWS2-Demo_files/figure-gfm/prob0plot-1.png" alt="Frequency of zeros over time"  />
+<p class="caption">
+
+Frequency of zeros over time
+</p>
+
+</div>
+
+Finally an interactive plot of the variation over months can be
+constructed as follows:
+
+``` r
+library(plotly)
+```
+
+    ## Loading required package: ggplot2
+
+    ## 
+    ## Attaching package: 'plotly'
+
+    ## The following object is masked from 'package:ggplot2':
+    ## 
+    ##     last_plot
+
+    ## The following object is masked from 'package:stats':
+    ## 
+    ##     filter
+
+    ## The following object is masked from 'package:graphics':
+    ## 
+    ##     layout
+
+``` r
+library(tidyr)
 library(ggplot2)
-library(ggridges)
 
-# Plot the distributions by year
-ggplot(dfs, aes(x = ged_sb, y = Year, group = Year)) +
-  geom_density_ridges(panel_scaling = TRUE)
+x <- roll.ged.sb[,2]
+dmn <- list(month.abb, unique(floor(time(x))))
+# convert to data frame by month, to make data retrieval easier
+res.x <- as.data.frame(t(matrix(x, 12, dimnames = dmn)))
+# set the values of the 3d vectors
+n <- nrow(res.x)
+x.x <- rep(month.abb, times=n)
+y.x <- rep(rownames(res.x), each=12)
+z.x <- c(log(as.numeric(x)))
+
+# May need to append values to the vector
+# converted from the time series and we let them
+# equal to the last value in the time series so the
+# shape of the graph will not be influenced
+# n.z <- length(x.us)
+# z.us[n.z+1] = z.us[n.z]
+# z.us[n.z+2] = z.us[n.z]
+x.us <- data.frame(x.x, y.x, z.x)
+colnames(x.us) <- data.frame("x", "y", "z")
+fig.x <- plot_ly(x.us, x = ~y, y = ~x, z = ~z, 
+                 type = 'scatter3d', 
+                 mode = 'lines', color=~y.x)
+
+# to turn off the warning caused by the RColorBrewer
+suppressWarnings(print(fig.x))
 ```
 
-    ## Picking joint bandwidth of 76.2
+## Simple model choices for `cm` data
 
-<img src="Brandt-VIEWS2-Demo_files/figure-gfm/distrosums-1.png" style="display: block; margin: auto;" />
+From the earlier explorations regression-alike prediction models for
+’ged_sb`for the`cm\` data should have the following properties:
 
-(This last plot needs some work on its aesthetics. The idea is to show
-that the modes are the same, but the tails vary widely.)
+1.  Fit the high probability of zero values on the data
+2.  Allow for excess variation (so large predictive variances)
+3.  Can alow future covariates like those proposed via the VIEWS
+    codebooks
 
-## Fit Tweedie models
+# Tweedie distribution models
 
-**Describe Tweedie and EDM models here**.
+The Tweedie distribution is a member of the exponential dispersion model
+(EDM) class of distributions. The canonical references to this are
+Tweedie (1984) which defines the specific distribution, Jorgensen (1987)
+that outlines the EDM class and Jorgensen (1997) that treats the whole
+class with a specific chapter on the Tweedie distribution.
+
+Numerical results and computational details for the Tweedie distribution
+and its likeihood estimation are addressed in Zhang (2013), P. K. Dunn
+and Smyth (2008) P. K. Dunn and Smyth (2005), and P. Dunn (2017).
+
+## Definition
+
+The Tweedie distribution is member of the class of exponential
+dispersion distribution models (Jorgensen 1997). This is a broad class
+of models that include as special cases normal, gamma, Poisson,
+binomial, and negative binomial distributions. A Tweedie random variable
+has an exponential dispersion for $`Y \sim ED(\mu, \sigma^2)`$ where
+
+``` math
+
+\begin{align}
+E(Y) &= \mu\\
+V(Y) &= \sigma^2 \mu^p
+\end{align}
+```
+
+This is given as $`Y`$ follows a Tweedie density with power $`p`$ of the
+form $`Y \sim TW_p(\mu, \sigma^2)`$:
+
+``` math
+
+\Pr(Y|\mu, \sigma^2) = \int_A \exp\left( \frac{\theta \cdot z - \kappa_p(\theta)}{\sigma^2}\right) \nu_\lambda dz
+```
+where
+``` math
+
+\kappa_p(\theta)=
+\begin{cases}
+  \frac{\alpha-1}{\alpha} \left(\frac{\theta}{\alpha-1}\right)^\alpha,  & \text{for }p\neq 1,2\\
+  -\log(-\theta), & \text{for }p=2\\
+  e^\theta, & \text{for }p=1
+\end{cases}
+```
+Typically note the mapping that $`\alpha = \frac{p-2}{p-1}`$ and
+$`p = \frac{\alpha-2}{\alpha-1}`$. Numerical approximation must be used
+for evaluation and simulation (See P. K. Dunn and Smyth 2005, 2008; and
+P. Dunn 2017).
+
+When $`p`$ takes on certain values, the Tweedie reduces to other known
+exponential distributions (See Sections 4.1 and 4.2 Jorgensen 1997).
+
+Specifically these are
+
+| Index           | Distribution                     |
+|:----------------|:---------------------------------|
+| $`p = 0`$       | Normal                           |
+| $`p \in (0,1)`$ | Not defined                      |
+| $`p = 1`$       | Poisson                          |
+| $`p \in (1,2)`$ | Compound Poisson (zero inflated) |
+| $`p = 2`$       | Gamma                            |
+| $`p = 3`$       | inverse-Gaussian                 |
+
+Key idea is that these have a positive mass at zero: so there is just
+some probability that it is zero that is part of the density. Additional
+cases are covered in (Jorgensen 1997 Table 4.1)
+
+## Properties
+
+Tweedie random variables are are subject to scale invariance also known
+as reproductive exponential dispersion:
+
+``` math
+
+  c\operatorname {Tw} _{p}(\mu ,\sigma ^{2})=\operatorname {Tw} _{p}(c\mu ,c^{2-p}\sigma ^{2}).
+```
+(Jorgensen 1997 Theorem 4.1)
+
+The variance function has a power-law interpretation as part of it
+cumulatve generator $`\kappa_p(\theta)`$ produces
+
+This formulation is useful because it manifests some well known
+properties:
+
+- It can model the excess zeros without a separate model (zero
+  inflation) and give them their own mass or probability that matches
+  the data *a priori*.
+- It generalized a negative binomial, or compound Poisson process.
+- The process can reproduce versions of a Poisson-gamma convolution to a
+  negative binomial (a common example in Bayesian data analysis of
+  counts).
+- It follows a Taylor power law via the variance-to-mean scaling
+  relationship.
+
+## Illustration
+
+To understand the basic properties of the Tweedie model and its key uses
+in applications, consider the typical case of interest which is a random
+variable with an atom at zero with a small mean and large variance. We
+can do this using a Tweedie distribution over various values of
+$`{\mu,\phi,p}`$. THe following figure gives an illustration for
+different choices.
+
+``` r
+library(statmod)
+library(tweedie)
+
+par(mfcol=c(5,5), oma = c(4,1,1,1), mar=c(4,3,1,1))
+for(mu in seq(0.5,2,0.5)) {
+for(phi in c(seq(1,4,1),10)) # dispersion values loop
+{
+
+# Like Jorgensen Figure 4.5
+plot(c(-0.1,4), c(0,2), type="n",
+     xlab="",  ylab="",
+     xaxt="n", yaxt="n", mgp=c(2,.5,0), 
+     main= substitute(list(mu, phi) == group("(",list(x,y),")"),
+     list(x = mu, y = phi)))
+#       bquote(mu == .(mu)))
+#     expression(paste(mu)))
+
+axis(1, 0:6, mgp=c(2,.5,0))
+axis(2, seq(0,2,0.5), #paste(seq(45,60,5),"%",sep=""),
+      mgp=c(2,.5,0))
+
+# Loop over the values of p = power...
+for(i in seq(1, 1.9, by=0.3))
+    {
+curve(dtweedie(x, mu = mu, phi = phi, power = i), 0.01, 4,
+      ylab = "", add = TRUE, lwd=2, 
+      lty=(i%/%0.3 - 2),
+      col=(i%/%0.3 - 2))
+  
+  # Now add a vertical bar for each Pr(Y=0)
+  
+}
+}
+}
+
+# Legend trick
+par(fig = c(0, 1, 0, 1), oma = c(0, 0, 0, 0), mar = c(0, 0, 0, 0), new = TRUE)
+plot(0, 0, type = 'l', bty = 'n', xaxt = 'n', yaxt = 'n')
+legend("bottom", legend = paste("p = ", seq(1, 1.9, by=0.3), sep=""), 
+       col=1:4, lty=1:4,
+       lwd=2, xpd = TRUE, horiz = TRUE, cex = 1, seg.len=1, bty = 'n')
+```
+
+<img src="Brandt-VIEWS2-Demo_files/figure-gfm/densityexample-1.png" style="display: block; margin: auto;" />
+
+The figure belies the extra mass computed for the probability at zero
+(cf. Jorgensen 1997, Figure 4.5ff).
+
+# Tweedie models for ’`cm` data
 
 This is a stability check on the data: can we even really generalize an
 ED like target density? Do the parameters of the Tweedie fitted model to
@@ -272,16 +681,21 @@ system.time(all.tw <- clusterApplyLB(cl, sbdata, oneperiod.fit))
 ```
 
     ##    user  system elapsed 
-    ##   0.099   0.038  53.390
+    ##   0.103   0.040  57.499
 
 ``` r
 stopCluster(cl)
 ```
 
-## Time series parameter summaries
+# Time series parameter summaries
 
 Plot summaries of the key parameters of the Tweedie models for each time
-period (month).
+period (month). These examine the probabilty that there are zeros and
+how well one can fit the baseline variance of the data using a count
+model.
+
+Begin by extracting out the fitted model objects from the Tweedie models
+fit earlier.
 
 ``` r
 # Now summarize the results
@@ -296,7 +710,16 @@ colnames(twp) <- c("Mean", "Std Dev.", "phi", "p")
 plot(twp, main="")
 ```
 
-<img src="Brandt-VIEWS2-Demo_files/figure-gfm/summs-1.png" style="display: block; margin: auto;" />
+<div class="figure" style="text-align: center">
+
+<img src="Brandt-VIEWS2-Demo_files/figure-gfm/summs-1.png" alt="Tweedie models parameters for each `cm`.  Phi is the dispersion parameter, p is the power parameter"  />
+<p class="caption">
+
+Tweedie models parameters for each `cm`. Phi is the dispersion
+parameter, p is the power parameter
+</p>
+
+</div>
 
 Now plot the probability of a zero count from the Tweedie, Poisson, and
 data for comparison.
@@ -332,7 +755,16 @@ legend(2013, 0.925,
        lty=2:3, lwd=2, cex=0.75)
 ```
 
-<img src="Brandt-VIEWS2-Demo_files/figure-gfm/zeropred-1.png" style="display: block; margin: auto;" />
+<div class="figure" style="text-align: center">
+
+<img src="Brandt-VIEWS2-Demo_files/figure-gfm/zeropred-1.png" alt="Probabilty of zero prediction from the Tweedie model compared to baseline frequency of zero."  />
+<p class="caption">
+
+Probabilty of zero prediction from the Tweedie model compared to
+baseline frequency of zero.
+</p>
+
+</div>
 
 # Simple prediction models
 
@@ -433,19 +865,24 @@ count.cf <- function(train, test, xi.vec = seq(1.1, 1.75, by=0.025),
 }
 ```
 
-## Simple demo of the count model comparisons
+## Demo of the count models over train-test splits
+
+Here a training and test set are established for forecasting and
+scoring. The `train` set are the `cm` data from 2021-2023 and the `test`
+set are the data after January 2024.
 
 ``` r
 # Define a DV as a simple variable and a factor for the countries
 dfs$y <- dfs$ged_sb
 dfs$geo <- as.factor(dfs$country_id)
 
-# Splits and subsets
+# Splits and subsets over the relevant periods
 train <- dfs[dfs$Year>2020 & dfs$Year < 2024,]
 test <- dfs[dfs$Year>2023,]
 
 # Now fit models over the subsets
-system.time(count.out <- count.cf(train, test, N=1000))
+N <- 100
+system.time(count.out <- count.cf(train, test, N=N))
 ```
 
     ## Fitting Tweedie model grid for xi:
@@ -454,7 +891,369 @@ system.time(count.out <- count.cf(train, test, N=1000))
     ## Sampling forecast densities . . . .
 
     ##    user  system elapsed 
-    ## 159.044   4.532 163.593
+    ## 156.637   4.586 161.280
+
+The results are in the `count.out` object. This is list with one set of
+`N` predictions for each country (191) for each month (12).
+
+``` r
+cat("Structure of the count.out\n")
+```
+
+    ## Structure of the count.out
+
+``` r
+str(count.out)
+```
+
+    ## List of 5
+    ##  $ P   : int [1:2292, 1:100] 0 3 0 0 0 2 0 0 0 0 ...
+    ##  $ NB  : num [1:2292, 1:100] 0 0 0 0 0 9 0 0 0 0 ...
+    ##  $ ZIP : int [1:2292, 1:100] 0 0 0 0 0 2 0 0 0 0 ...
+    ##  $ ZINB: num [1:2292, 1:100] 0 1 0 0 0 2 0 0 0 0 ...
+    ##  $ TW  : num [1:2292, 1:100] 0 3.23 0 0 0 ...
+
+``` r
+cat("\n\n")
+```
+
+``` r
+cat("Structure of the test \n")
+```
+
+    ## Structure of the test
+
+``` r
+str(test[,c(1,2,4)])
+```
+
+    ## 'data.frame':    2292 obs. of  3 variables:
+    ##  $ month_id  : int  529 529 529 529 529 529 529 529 529 529 ...
+    ##  $ country_id: int  161 155 21 48 160 134 26 83 64 135 ...
+    ##  $ ged_sb    : int  0 8 0 0 0 0 0 0 0 0 ...
+
+So the row here correspond to the country-months for 2024 and the
+columns are the `N` predictions.
+
+<!-- ### Count regressions with GAM / splines / GLMMs -->
+
+<!-- This section demonstrates the approach taken in Brandt (2024).   Here an illusration of a basic model with GAM / GLMM components are illustrated and then compared to the earlier section's analyses. -->
+
+# Practical Forecast Scoring
+
+## Basics of Scoring Forecasts
+
+Assumed steps for a forecast target:
+
+1.  Data are split into training and test sets (if you have no true
+    future values).
+
+    1.  Could be future values in time.
+    2.  Might be some sampled values
+    3.  Cross-validation (CV) or leave-out-observations (LOO) are othere
+        ways.
+
+2.  Use the training data to fit a model and generate predictions over
+    the test set.
+
+3.  Compare the predictions over the observations or cases in the test
+    set to the predictions based on the training set. *This is the
+    scoring task.*
+
+    Key complication: keeping honest about the information that is
+    segmented in the training and test sets.
+
+## Scoring forecasts
+
+Here’s how one can compute scoring rules to rank the forecasts from each
+of the models. This is akin to [Brandt
+(n.d.)](https://github.com/PTB-OEDA/VIEWS2-DensityForecasts) which are
+baseline GAM and GLMM models for the same data (albeit different
+training-test splits). The task here is to statistically summaize the
+comparison of the forecasts to the observed or `test` data for model
+selection and evaluation.
+
+## Scoring with simple metrics
+
+The goal here is to compare each of the models produced in the last
+section to the data in the `test` set. So there are a sample of
+predictions from each of the five models (labeled `P`, `NB`, `ZIP`,
+`ZINB`, and `TW` earlier).
+
+A simple first comparison is just to look at the summaries of each of
+the 5 forecast models compared to the observed values for each
+country-month.
+
+- Series of scatter, QQ, and then ECDF plots for the models.
+- Various metrics for these.
+
+``` r
+# Poisson means for each country-month merged with `test`
+tmp <- data.frame(test, PoissonPred = rowMeans(count.out$P))
+
+par(mfrow=c(1,3))
+plot(tmp$PoissonPred, tmp$y, 
+     xlab="Mean Poisson Predictions", ylab="Actuals", main = "Scatterplot")
+qqplot(tmp$PoissonPred, tmp$y, xlab="Mean Poisson Predictions",
+       ylab="Actuals", main = "QQ plot")
+plot(ecdf(tmp$PoissonPred), 
+     xlab="Mean Poisson Predictions", ylab="Cumulative  Density", main="ECDF")
+lines(ecdf(tmp$y), col="red")
+legend("bottomright", legend=c("Poisson", "Actual"), col=1:2, lwd=2)
+```
+
+<div class="figure" style="text-align: center">
+
+<img src="Brandt-VIEWS2-Demo_files/figure-gfm/summary_forcs-1.png" alt="2024 `cm` Mean Poisson Predictions versus Actuals"  />
+<p class="caption">
+
+2024 `cm` Mean Poisson Predictions versus Actuals
+</p>
+
+</div>
+
+## Forecast Formatting
+
+Recall though that one can use the sample of `N = 100` draws of the
+forecasts for each `cm` to construct various other metrics for
+performance by units (countries, time or both). To see this, consider
+making a dataset of the
+``` N`` predictions for the Poisson model for each of the ```cm\` in
+2024. This is done like this:
+
+``` r
+#### Forecasts formatting setup ####
+# This is different than in some other applications, but the logic is meant
+# to be clear here.
+
+# Add case idtenifiers to the forecasts
+forecast.P <- cbind(test[,c(1,2)], count.out$P)   # Poisson model ones
+forecast.TW <- cbind(test[,c(1,2)], count.out$TW) # Tweedie ones
+
+# Now, reshape these into a `long` format where 
+# rows are a cm forecast by model
+
+P.stacked <- reshape(forecast.P, 
+                     direction = "long",
+                     varying = list(names(forecast.P)[3:(N+2)]),
+                     v.names = "predicted",
+                     idvar = c("month_id", "country_id"),
+                     timevar = "sample_id",
+                     times = 1:N)
+P.stacked$model <- "Poisson"
+
+TW.stacked <- reshape(forecast.TW, 
+                      direction = "long",
+                      varying = list(names(forecast.TW)[3:(N+2)]),
+                      v.names = "predicted",
+                      idvar = c("month_id", "country_id"),
+                      timevar = "sample_id",
+                      times = 1:N)
+TW.stacked$model <- "Tweedie"
+
+# Cleanup
+rm(forecast.P, forecast.TW)
+
+# Now merge forecasts with the test data
+P.stacked <- merge(P.stacked, test,
+                   by.x = c("month_id", "country_id"),
+                   by.y = c("month_id", "country_id"))
+TW.stacked <- merge(TW.stacked, test,
+                    by.x = c("month_id", "country_id"),
+                    by.y = c("month_id", "country_id"))
+
+# Some reorg for below
+all.stacked <- rbind(P.stacked, TW.stacked)
+all.stacked$observed <- all.stacked$y
+
+rm(P.stacked, TW.stacked)
+```
+
+This set of `*.stacked` objects are now the items needed to score the
+forecasts in terms of RMSE, Brier scores, continuous rank probability
+scores (CRPS), etc.
+
+The earlier forecast comparisons were for the mean forecasts over the
+`N` draws of the forecast distribution(s) for each `cm`. One can look at
+the stacked set of forecast samples to see how these differ:
+
+``` r
+# Tweedie density for each country-month merged with `test`
+
+par(mfrow=c(1,3))
+plot(all.stacked[all.stacked$model=="Tweedie",c(4,22)],  pch=".",
+     xlab="Tweedie Predictions", ylab="Actuals", main = "Scatterplot")
+
+qqplot(x = all.stacked[all.stacked$model=="Tweedie",4],
+       y = all.stacked[all.stacked$model=="Tweedie",22],
+       pch=".",
+       xlab="Tweedie Predictions",
+       ylab="Actuals", main = "QQ plot")
+plot(ecdf(all.stacked[all.stacked$model=="Tweedie",4]), 
+     xlab="Tweedie Predictions", ylab="Cumulative  Density", main="ECDF")
+lines(ecdf(tmp$y), col="red")
+legend("bottomright", legend=c("Tweedie", "Actual"), col=1:2, lwd=2)
+```
+
+<div class="figure" style="text-align: center">
+
+<img src="Brandt-VIEWS2-Demo_files/figure-gfm/summary_forcs_density-1.png" alt="2024 `cm` Tweedie Density Predictions versus Actuals"  />
+<p class="caption">
+
+2024 `cm` Tweedie Density Predictions versus Actuals
+</p>
+
+</div>
+
+### Metrics for Forecast evaluation
+
+|  | Meteorology, Finance | Macroeconomics | Conflict Early Warning, Conflict Dynamics |
+|----|:---|:---|:---|
+| Point Metrics | RMSE, MAE | RMSE, MAE | RMSE, MAE, ROC Curves |
+| Interval | Scoring Rules | Fan Charts | none |
+| Density | VRHs, CRPS PITs, Sharpness Diagrams | LPSs, PITs | none |
+
+Selected Tools for Forecast Evaluation. CRPS, RMSE, MAE, VRH, LPS, and
+PIT denote Continuous Rank Probability Score, Root Mean Square Error,
+Mean Absolute Error, Verification Rank Histogram, Log Predictive Score,
+and Probability Integral Transform, respectively.
+
+### Point forecasts
+
+Consider this figure:
+
+<img src="Brandt-VIEWS2-Demo_files/figure-gfm/putfig-1.png" style="display: block; margin: auto;" />
+
+It shows how two analysts (models) could produce the same point (mean)
+forecast and hence the same prediction error. But, in fact, one analyst,
+A, assigns much more probability than the other, B, to values of the
+variable between the modal predictions.
+
+Using point metrics like RMSE leads one to conclude the two analysts
+perform equally well when, in fact, from a probabilistic standpoint,
+analyst A is the better “horse.’’
+
+### Root MSE
+
+Say the model is $`Y_t = \alpha + \beta X_t + \epsilon_t`$ with
+$`\epsilon_t \sim N(0, \sigma^2)`$ for $`t = 1, \ldots, T`$.
+
+The estimate of the model’s error variance is
+
+``` math
+ 
+\hat{s}^2 = \frac{1}{T-2} \sum^{T}_{t=1}(Y_t-\hat{Y_t})^2
+```
+
+where $`\widehat{Y}_t`$ is the period $`t`$ prediction.
+
+For the one step ahead point estimate at $`T+1`$, the estimated forecast
+error variance is:
+
+``` math
+
+\hat{s}^2_f = s^2 \left[1 + \frac{1}{T} +
+\frac{(X_{T+1}-\bar{X})^2}{\sum^{T}_{i=1}(X_t-\bar{X})^2}\right]
+```
+
+So we use this last quantity to get the forecast RMSE as $`s_f`$.
+
+### Problems with RMSE
+
+As a tool for ranking forecasts RMSE has problems (Armstrong and Collopy
+1992):
+
+*Lack of reliability:* Rankings of models based on RMSE are uncorrelated
+across levels of temporal aggregation and time horizons
+
+*Sensitivity to outliers:* RMSE can vary widely if there are outliers in
+the data.
+
+*Lack of Construct Validity:* RMSE ranks uncorrelated with ranks from
+other metrics and with consensus ranks.
+
+As indicative of underlying forecast density. Only under some strong
+assumptions, e.g., underlying DGP is normally distributed. But stylized
+facts about conflict dynamics suggest underlying density is not normal.
+
+## Calibration & Sharpness
+
+1.  Calibration: statistical consistency between the forecast and
+    observations
+
+2.  Sharpness: the concentration (coverage) of the predictive
+    distribution
+
+The goal of probabilistic forecasting is to achieve a high degree of
+sharpness subject to calibration (Gneiting et al. 2007). A suite of
+tools is used to determine whether this goal has been achieved.
+
+How this is done and interpreted is an ongoing research topic, per
+[Hullman
+(2024)](https://statmodeling.stat.columbia.edu/2024/11/15/calibration-for-everyone-and-every-decision-maybe/)
+
+## CRPS: measures calibration and sharpness
+
+- It measures the squared difference between the total areas of the
+  predicted and observed cumulative distributions
+
+- Smaller values are better, since it means these distributions are
+  similar
+
+- It is measured in units of the forecasted variable so you can only
+  compare the CRPS for the same variable
+
+## CRPS formula
+
+Let the forecast variable of interest again be denoted by $`x`$, the
+observed value of the variable by $`x_a`$, and the analyst’s (or
+model’s) pdf by $`\rho(x)`$. The CRPS is
+``` math
+\begin{aligned}
+CRPS(P,x_a)=\displaystyle{\int_{-\infty}^{\infty}}[P(x)-P_a(x)]^2dx,
+\end{aligned}
+```
+
+where $`P`$ and $`P_a`$ are the cumulative distributions:
+
+``` math
+\begin{aligned}
+P(x) &= \int_{-\infty}^{x}\rho(y)dy\\
+P_a(x) &= H(x-x_a).
+\end{aligned}
+```
+
+Here, $`H`$ is the Heaviside function: $`H(x-x_a) = 0`$ if $`(x-x_a)<0`$
+and $`H(x-x_a) = 1`$ if $`(x-x_a) \ge 0`$.
+
+(If that is more calculus than you like, its just a fancy way to count.
+See the next slide).
+
+## A CRPS Visual
+
+![Example from Hegre et al. (2024; Figure 3)](Hegreetal2024-Fig3.png)
+Notice then that an “aggregate” CRPS is made up of sums of the various
+grey areas described above.
+
+## CRPS in practice
+
+- In application, an average of the score often is calculated over this
+  set of forecasts or grid points, $`k`$:
+  ``` math
+
+  \overline{CRPS} = \sum_{k}w_kCRPS(P_k,x_{a}^{k})
+  ```
+  where $`w_k`$ are weights set by the forecaster (typically,
+  $`w_k = \frac{1}{k}`$).
+
+- CRPS scores will typically differ from RMSE and MAE forecast metrics
+  rankings. This is because they are scoring the congruence of the full
+  forecast density to the observed data.
+
+Forecast scoring or metrics measure how well the forecast (denisty)
+compares to the obsereved data over the test horizon or cases.
+
+### CRPS
 
 ``` r
 library(scoringutils)
@@ -469,19 +1268,649 @@ print(unlist(check.crps), digits = 3)
 ```
 
     ##    P   NB  ZIP ZINB   TW 
-    ## 73.5 31.2 73.4 36.4 61.3
+    ## 72.7 38.5 72.7 41.6 61.8
 
-### Count regressions with GAM / splines
+So in this application and example the *negative binomial* models have
+the best CRPS scores.
 
-This section demonstrates the approach taken in Brandt (2024). Here an
-illusration of a basic model with GAM / GLMM components are illustrated
-and then compared to the earlier section’s analyses.
+Contrast this with what you would get from using the full densities in
+the `scoringutils` package. Another example here:
 
-# Scoring forecasts
+``` r
+system.time(scored.out <- score(as_forecast_sample(all.stacked,
+                                forecast_unit = c("model", "month_id", "isoab"))))
+```
 
-Here’s how one can compute scoring rules to rank the forecasts from each
-of the models. This is akin to Brandt (n.d.).
+    ##    user  system elapsed 
+    ##   4.877   0.283   1.978
 
-# PRIO-Grid Month (`pgm`) Data setup
+``` r
+# Get summaries by correct units of evaluation
+library(magrittr)
+```
 
-## Analyses like above for some `pgm`
+    ## 
+    ## Attaching package: 'magrittr'
+
+    ## The following object is masked from 'package:tidyr':
+    ## 
+    ##     extract
+
+``` r
+library(dplyr)
+```
+
+    ## 
+    ## Attaching package: 'dplyr'
+
+    ## The following object is masked from 'package:MASS':
+    ## 
+    ##     select
+
+    ## The following objects are masked from 'package:stats':
+    ## 
+    ##     filter, lag
+
+    ## The following objects are masked from 'package:base':
+    ## 
+    ##     intersect, setdiff, setequal, union
+
+``` r
+crps <- scored.out %>% 
+  summarise_scores(by=c("model", "month_id"), na.rm=TRUE) %>%
+  select(c("model", "month_id", "crps"))
+
+print(crps)
+```
+
+    ##       model month_id     crps
+    ##      <char>    <int>    <num>
+    ##  1: Poisson      529 78.01212
+    ##  2: Poisson      530 67.69453
+    ##  3: Poisson      531 82.01908
+    ##  4: Poisson      532 66.04352
+    ##  5: Poisson      533 66.25324
+    ##  6: Poisson      534 69.59526
+    ##  7: Poisson      535 60.70981
+    ##  8: Poisson      536 61.42518
+    ##  9: Poisson      537 70.92085
+    ## 10: Poisson      538 83.72770
+    ## 11: Poisson      539 88.33316
+    ## 12: Poisson      540 77.44916
+    ## 13: Tweedie      529 63.61000
+    ## 14: Tweedie      530 56.60622
+    ## 15: Tweedie      531 71.05911
+    ## 16: Tweedie      532 54.89585
+    ## 17: Tweedie      533 51.99261
+    ## 18: Tweedie      534 60.57815
+    ## 19: Tweedie      535 51.74554
+    ## 20: Tweedie      536 52.91254
+    ## 21: Tweedie      537 62.02186
+    ## 22: Tweedie      538 73.94024
+    ## 23: Tweedie      539 77.73781
+    ## 24: Tweedie      540 65.04032
+    ##       model month_id     crps
+
+So this now shows the model-specific CRPS metrics for the time periods.
+
+Additional examples deploying CRPS metrics across models are
+[here](https://github.com/PTB-OEDA/VIEWS2-DensityForecasts/blob/main/Brandt-VIEWS2-Estimation.Rmd)
+
+Another metric example would be across the countries `se_mean` which is
+the RMSE:
+
+``` r
+rmse <- scored.out %>% 
+  summarise_scores(by=c("model", "isoab"), na.rm=TRUE) %>%
+  select(c("model", "isoab", "se_mean"))
+
+head(rmse)
+```
+
+    ##      model  isoab  se_mean
+    ##     <char> <char>    <num>
+    ## 1: Poisson    GUY 0.000000
+    ## 2: Poisson    CHL 0.750000
+    ## 3: Poisson    HUN 0.000000
+    ## 4: Poisson    POL 0.001975
+    ## 5: Poisson    SVK 0.000000
+    ## 6: Poisson    SVN 0.000000
+
+``` r
+str(rmse)
+```
+
+    ## Classes 'scores', 'data.table' and 'data.frame': 382 obs. of  3 variables:
+    ##  $ model  : chr  "Poisson" "Poisson" "Poisson" "Poisson" ...
+    ##  $ isoab  : chr  "GUY" "CHL" "HUN" "POL" ...
+    ##  $ se_mean: num  0 0.75 0 0.00198 0 ...
+    ##  - attr(*, "metrics")= chr [1:10] "bias" "dss" "crps" "overprediction" ...
+    ##  - attr(*, ".internal.selfref")=<externalptr>
+
+This gives back the `rmse` for each country over the time periods for
+each of the two models.
+
+## Metrics over time horizons
+
+Here is how to convert the scores from the `scoringutils` functions to a
+time series:
+
+``` r
+# Make a time series of the CRPS for each model / forecast period
+crps.ts <- scored.out %>% select(c("model", "month_id", "crps")) %>% arrange(model, month_id)
+
+# Arrange the time series and add names
+tmp <- crps.ts %>% summarise_scores(by=c("model", "month_id"))
+mnames <- unique(tmp$model)
+crps.ts1 <- matrix(tmp$crps, ncol=length(mnames))
+colnames(crps.ts1) <- mnames
+
+crps.ts1 <- ts(crps.ts1, start=c(2024,1), freq=12)
+
+# These are the annualized CRPS to compare to their metrics
+# So this is all the years and models.
+
+plot(crps.ts1, plot.type="s", lty=1:2, ylab="CRPS Sum")
+legend("topleft", legend = mnames, lty=1:2)
+```
+
+<div class="figure" style="text-align: center">
+
+<img src="Brandt-VIEWS2-Demo_files/figure-gfm/crps_ts-1.png" alt="CRPS Time Series. Lower scores are better!"  />
+<p class="caption">
+
+CRPS Time Series. Lower scores are better!
+</p>
+
+</div>
+
+<!-- ## Additions one can consider -->
+
+<!-- 1.  Do the same for other scores and metrics. -->
+
+<!-- 2.  Make other relevant subsets of all of this. (What are these?) -->
+
+<!-- 3.  Consider diagrams in the Brandt (2024) paper "Evaluating and Scoring in Conflict and Violence Forecasts": -->
+
+<!--     1.  Taylor Diagrams -->
+
+<!--     2.  Standard deviation ratios -->
+
+<!--     3.  Other metrics. -->
+
+<!-- See Dietze, M. C. (2017). [Ecological Forecasting](https://doi.org/10.2307/j.ctvc7796h) Princeton University Press. -->
+
+<!-- ## Taylor Diagrams -->
+
+<!-- Taylor diagrams [@Taylor2001] are a visual tool that plot the standardized relative variance of the forecasts to the data at $(1,0)$ in a Cartesian $2^D$ plane. -->
+
+<!-- -   The x-axis is then the relative variance of the data and the y-axis is the relative variance of the forecasts -->
+
+<!-- -   This can also be done for the unstandardized data too. -->
+
+<!-- -   The corresponding circular arcs and the angles of the points for each conditional forecast relative to the data in such a plot then measure the correlation of the two quantities of interest -->
+
+<!-- -   plot demonstrates the root mean squared error differences in the forecasts and the data as a function of their (relative) standard deviations and correlation. -->
+
+<!-- -   This can then be conditioned over the posterior forecast sample attributes (models, time periods, etc.). -->
+
+<!-- ## Taylor Diagram math -->
+
+<!-- This figure places the normalized standard deviation of the data on the x-axis and compares it to the normalized standard deviation of the forecasts on the y-axis. -->
+
+<!-- Based on the law of cosines these quantities can be used to relate the correlation and the standard deviation of the data and the forecasts. -->
+
+<!-- For two variables $X$ and $Y$, the centered root mean squared error (CRMSE) is -->
+
+<!-- $$ -->
+
+<!-- \begin{aligned} -->
+
+<!--     CRMSE(X,Y) &= \sqrt{\frac{1}{n} \sum_{i=1}^n [(x_i - \mu_x)(y_i - \mu_y)]^2}\\ -->
+
+<!--     CRMSE(X,Y)^2 &= \sigma_X^2 + \sigma_Y^2  - 2\sigma_X \sigma_Y R_{XY} -->
+
+<!-- \end{aligned} -->
+
+<!-- $$ -->
+
+<!-- where $R_{XY}$ is the correlation of $X$ and $Y$. -->
+
+<!-- Using the law of cosines $c^2 = a^2 + b^2 - 2ab \cdot cos(\theta)$, where $\theta = -->
+
+<!--   arccos(R_{XY})$. -->
+
+<!-- For details on implementation, see [@ANZEL2023107843,@openair] -->
+
+<!-- ## Taylor Diagram example code -->
+
+<!-- ```{r taylordemo, echo=TRUE} -->
+
+<!-- #### Taylor diagram #### -->
+
+<!-- library(openair) -->
+
+<!-- # Normalized Taylor diagrams -->
+
+<!-- TaylorDiagram(forcs[forcs$model!="Poisson GAM" & -->
+
+<!--                       forcs$model!="Neg Binom GAM" & -->
+
+<!--                       forcs$model!="Tweedie GAM",], -->
+
+<!--               obs="observed", mod="predicted", -->
+
+<!--               group=c("model"), type = "year", -->
+
+<!--               key.title = "Model", -->
+
+<!--               normalise=TRUE, -->
+
+<!--               main = "Normalized Taylor Diagram") -->
+
+<!-- # UN-Normalized Taylor diagram for GLMMs -->
+
+<!-- TaylorDiagram(forcs[forcs$model!="Poisson GAM" & -->
+
+<!--                       forcs$model!="Neg Binom GAM" & -->
+
+<!--                       forcs$model!="Tweedie GAM",], -->
+
+<!--               obs="observed", mod="predicted", -->
+
+<!--               group=c("model"), type = "year", -->
+
+<!--               key.title = "Model", -->
+
+<!--               normalise=FALSE, -->
+
+<!--               main = "Unnormalized Taylor Diagram") -->
+
+<!-- # Drop 2023 -->
+
+<!-- TaylorDiagram(forcs[forcs$model!="Poisson GAM" & -->
+
+<!--                       forcs$model!="Neg Binom GAM" & -->
+
+<!--                       forcs$model!="Tweedie GAM" &  -->
+
+<!--                       forcs$year < 2023,], -->
+
+<!--               obs="observed", mod="predicted", -->
+
+<!--               group=c("model"), type = "year", -->
+
+<!--               key.title = "Model", -->
+
+<!--               normalise=TRUE, -->
+
+<!--               main = "Normalized Taylor Diagram") -->
+
+<!-- # # Experimenting... -->
+
+<!-- TaylorDiagram(forcs[forcs$model!="Poisson GAM" & -->
+
+<!--                       forcs$model!="Neg Binom GAM" & -->
+
+<!--                       forcs$model!="Tweedie GAM",], -->
+
+<!--               obs="observed", mod="predicted", -->
+
+<!--               group=c("model", "country_id"), type = "year", -->
+
+<!--               key.title = "Model", -->
+
+<!--               normalise=TRUE, -->
+
+<!--               main = "") -->
+
+<!-- TaylorDiagram(forcs[forcs$model!="Poisson GAM" & -->
+
+<!--                       forcs$model!="Neg Binom GAM" & -->
+
+<!--                       forcs$model!="Tweedie GAM",], -->
+
+<!--               obs="observed", mod="predicted", -->
+
+<!--               group=c("model", "year")) -->
+
+<!-- ``` -->
+
+<!-- ## Standard Deviation Ratios -->
+
+<!-- Ratio of the model prediction standard deviations to the observed. The idea is from @dietze2017ecological: -->
+
+<!-- ```{r othercode, echo=TRUE, fig.align='center', fig.keep='all'} -->
+
+<!-- #### SD Ratios #### -->
+
+<!-- model.ses <- scored.out %>% -->
+
+<!--   summarise_scores(by = c("model", "month_id"), na.rm=TRUE) %>% -->
+
+<!--   group_by(model) %>% select(model, se_mean, month_id) %>% arrange(model, month_id) -->
+
+<!-- # Organize and label columns with model names -->
+
+<!-- mdls <- unique(model.ses$model) -->
+
+<!-- sd.model <- matrix(sqrt(model.ses$se_mean), ncol=length(mdls)) -->
+
+<!-- colnames(sd.model) <- mdls -->
+
+<!-- # Get the relevant time series setup -->
+
+<!-- sd.model <- ts(sd.model, start=c(2018,1), freq=12) -->
+
+<!-- sd.obs <- window(roll.ged.sb[,3], start=c(2018,1), end=c(2023,12)) -->
+
+<!-- # Plot the SDs -->
+
+<!-- par(mfcol=c(3,2)) -->
+
+<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2018,1), end=c(2018,12)), -->
+
+<!--      plot.type = "single", col=1:6, lwd=2, -->
+
+<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD]), -->
+
+<!--      main="Standard deviation ratios, 2018") -->
+
+<!-- abline(h=1, lty=2) -->
+
+<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2019,1), end=c(2019,12)), -->
+
+<!--      plot.type = "single", col=1:6, lwd=2, -->
+
+<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD]), -->
+
+<!--      main="Standard deviation ratios, 2019") -->
+
+<!-- abline(h=1, lty=2) -->
+
+<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2020,1), end=c(2020,12)), -->
+
+<!--      plot.type = "single", col=1:6, lwd=2, -->
+
+<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD]), -->
+
+<!--      main="Standard deviation ratios, 2020") -->
+
+<!-- abline(h=1, lty=2) -->
+
+<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2021,1), end=c(2021,12)), -->
+
+<!--      plot.type = "single", col=1:6, lwd=2, -->
+
+<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD]), -->
+
+<!--      main="Standard deviation ratios, 2021") -->
+
+<!-- abline(h=1, lty=2) -->
+
+<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2022,1), end=c(2022,12)), -->
+
+<!--      plot.type = "single", col=1:6, lwd=2, -->
+
+<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD]), -->
+
+<!--      main="Standard deviation ratios, 2022") -->
+
+<!-- abline(h=1, lty=2) -->
+
+<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2023,1), end=c(2023,12)), -->
+
+<!--      plot.type = "single", col=1:6, lwd=2, -->
+
+<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD]), -->
+
+<!--      main="Standard deviation ratios, 2023") -->
+
+<!-- abline(h=1, lty=2) -->
+
+<!-- # Now can add / contrast the prediction errors with the data and its -->
+
+<!-- # observed volatility... -->
+
+<!-- par(mfcol=c(2,2), mar=c(4,4,1,1)) -->
+
+<!-- plot(window(roll.ged.sb[,2], start=c(2018,1), end=c(2022,12)), ylab="Mean Counts") -->
+
+<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2018,1), end=c(2022,12)), -->
+
+<!--      plot.type = "single", col=1:6, lwd=2, -->
+
+<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD])) -->
+
+<!-- abline(h=1, lty=2) -->
+
+<!-- plot(window(roll.ged.sb[,2], start=c(2023,1), end=c(2023,12)), ylab="Mean Counts") -->
+
+<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2023,1), end=c(2023,12)), -->
+
+<!--      plot.type = "single", col=1:6, lwd=2, -->
+
+<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD])) -->
+
+<!-- abline(h=1, lty=2) -->
+
+<!-- ``` -->
+
+## Benchmarks comparisons
+
+Add examples here of comparisons to VIEWS benchmarks?
+
+## Skill scores
+
+How to get skill scores for say CRPS and RMSE metrics:
+
+``` r
+get_pairwise_comparisons(scored.out)
+```
+
+    ##      model compare_against mean_scores_ratio         pval     adj_pval
+    ##     <char>          <char>             <num>        <num>        <num>
+    ## 1: Poisson         Tweedie         1.1752275 1.671746e-34 1.671746e-34
+    ## 2: Poisson         Poisson         1.0000000 1.000000e+00 1.000000e+00
+    ## 3: Tweedie         Poisson         0.8508991 1.671746e-34 1.671746e-34
+    ## 4: Tweedie         Tweedie         1.0000000 1.000000e+00 1.000000e+00
+    ##    crps_relative_skill
+    ##                  <num>
+    ## 1:           1.0840791
+    ## 2:           1.0840791
+    ## 3:           0.9224419
+    ## 4:           0.9224419
+
+The same by `month_id`:
+
+``` r
+get_pairwise_comparisons(scored.out, by="month_id")
+```
+
+    ##       model month_id compare_against mean_scores_ratio         pval
+    ##      <char>    <int>          <char>             <num>        <num>
+    ##  1: Poisson      529         Tweedie         1.2264128 2.537429e-04
+    ##  2: Poisson      529         Poisson         1.0000000 1.000000e+00
+    ##  3: Tweedie      529         Poisson         0.8153862 2.537429e-04
+    ##  4: Tweedie      529         Tweedie         1.0000000 1.000000e+00
+    ##  5: Poisson      530         Tweedie         1.1958851 4.713959e-03
+    ##  6: Poisson      530         Poisson         1.0000000 1.000000e+00
+    ##  7: Tweedie      530         Poisson         0.8362007 4.713959e-03
+    ##  8: Tweedie      530         Tweedie         1.0000000 1.000000e+00
+    ##  9: Poisson      531         Tweedie         1.1542375 2.958520e-02
+    ## 10: Poisson      531         Poisson         1.0000000 1.000000e+00
+    ## 11: Tweedie      531         Poisson         0.8663729 2.958520e-02
+    ## 12: Tweedie      531         Tweedie         1.0000000 1.000000e+00
+    ## 13: Poisson      532         Tweedie         1.2030695 1.127525e-04
+    ## 14: Poisson      532         Poisson         1.0000000 1.000000e+00
+    ## 15: Tweedie      532         Poisson         0.8312072 1.127525e-04
+    ## 16: Tweedie      532         Tweedie         1.0000000 1.000000e+00
+    ## 17: Poisson      533         Tweedie         1.2742818 2.911891e-04
+    ## 18: Poisson      533         Poisson         1.0000000 1.000000e+00
+    ## 19: Tweedie      533         Poisson         0.7847558 2.911891e-04
+    ## 20: Tweedie      533         Tweedie         1.0000000 1.000000e+00
+    ## 21: Poisson      534         Tweedie         1.1488508 5.542098e-04
+    ## 22: Poisson      534         Poisson         1.0000000 1.000000e+00
+    ## 23: Tweedie      534         Poisson         0.8704350 5.542098e-04
+    ## 24: Tweedie      534         Tweedie         1.0000000 1.000000e+00
+    ## 25: Poisson      535         Tweedie         1.1732374 3.947593e-04
+    ## 26: Poisson      535         Poisson         1.0000000 1.000000e+00
+    ## 27: Tweedie      535         Poisson         0.8523424 3.947593e-04
+    ## 28: Tweedie      535         Tweedie         1.0000000 1.000000e+00
+    ## 29: Poisson      536         Tweedie         1.1608812 4.593123e-03
+    ## 30: Poisson      536         Poisson         1.0000000 1.000000e+00
+    ## 31: Tweedie      536         Poisson         0.8614146 4.593123e-03
+    ## 32: Tweedie      536         Tweedie         1.0000000 1.000000e+00
+    ## 33: Poisson      537         Tweedie         1.1434815 7.598793e-05
+    ## 34: Poisson      537         Poisson         1.0000000 1.000000e+00
+    ## 35: Tweedie      537         Poisson         0.8745223 7.598793e-05
+    ## 36: Tweedie      537         Tweedie         1.0000000 1.000000e+00
+    ## 37: Poisson      538         Tweedie         1.1323698 5.811232e-04
+    ## 38: Poisson      538         Poisson         1.0000000 1.000000e+00
+    ## 39: Tweedie      538         Poisson         0.8831037 5.811232e-04
+    ## 40: Tweedie      538         Tweedie         1.0000000 1.000000e+00
+    ## 41: Poisson      539         Tweedie         1.1362960 1.289265e-05
+    ## 42: Poisson      539         Poisson         1.0000000 1.000000e+00
+    ## 43: Tweedie      539         Poisson         0.8800524 1.289265e-05
+    ## 44: Tweedie      539         Tweedie         1.0000000 1.000000e+00
+    ## 45: Poisson      540         Tweedie         1.1907869 3.472077e-05
+    ## 46: Poisson      540         Poisson         1.0000000 1.000000e+00
+    ## 47: Tweedie      540         Poisson         0.8397808 3.472077e-05
+    ## 48: Tweedie      540         Tweedie         1.0000000 1.000000e+00
+    ##       model month_id compare_against mean_scores_ratio         pval
+    ##         adj_pval crps_relative_skill
+    ##            <num>               <num>
+    ##  1: 2.537429e-04           1.1074352
+    ##  2: 1.000000e+00           1.1074352
+    ##  3: 2.537429e-04           0.9029874
+    ##  4: 1.000000e+00           0.9029874
+    ##  5: 4.713959e-03           1.0935653
+    ##  6: 1.000000e+00           1.0935653
+    ##  7: 4.713959e-03           0.9144401
+    ##  8: 1.000000e+00           0.9144401
+    ##  9: 2.958520e-02           1.0743544
+    ## 10: 1.000000e+00           1.0743544
+    ## 11: 2.958520e-02           0.9307915
+    ## 12: 1.000000e+00           0.9307915
+    ## 13: 1.127525e-04           1.0968452
+    ## 14: 1.000000e+00           1.0968452
+    ## 15: 1.127525e-04           0.9117056
+    ## 16: 1.000000e+00           0.9117056
+    ## 17: 2.911891e-04           1.1288409
+    ## 18: 1.000000e+00           1.1288409
+    ## 19: 2.911891e-04           0.8858644
+    ## 20: 1.000000e+00           0.8858644
+    ## 21: 5.542098e-04           1.0718446
+    ## 22: 1.000000e+00           1.0718446
+    ## 23: 5.542098e-04           0.9329711
+    ## 24: 1.000000e+00           0.9329711
+    ## 25: 3.947593e-04           1.0831608
+    ## 26: 1.000000e+00           1.0831608
+    ## 27: 3.947593e-04           0.9232239
+    ## 28: 1.000000e+00           0.9232239
+    ## 29: 4.593123e-03           1.0774420
+    ## 30: 1.000000e+00           1.0774420
+    ## 31: 4.593123e-03           0.9281242
+    ## 32: 1.000000e+00           0.9281242
+    ## 33: 7.598793e-05           1.0693369
+    ## 34: 1.000000e+00           1.0693369
+    ## 35: 7.598793e-05           0.9351589
+    ## 36: 1.000000e+00           0.9351589
+    ## 37: 5.811232e-04           1.0641287
+    ## 38: 1.000000e+00           1.0641287
+    ## 39: 5.811232e-04           0.9397360
+    ## 40: 1.000000e+00           0.9397360
+    ## 41: 1.289265e-05           1.0659719
+    ## 42: 1.000000e+00           1.0659719
+    ## 43: 1.289265e-05           0.9381111
+    ## 44: 1.000000e+00           0.9381111
+    ## 45: 3.472077e-05           1.0912318
+    ## 46: 1.000000e+00           1.0912318
+    ## 47: 3.472077e-05           0.9163956
+    ## 48: 1.000000e+00           0.9163956
+    ##         adj_pval crps_relative_skill
+
+## Setting up other baselines
+
+- Add more of the models to the section where the models are stacked.
+
+- Comparisons to other VIEWS baseline models are addressed
+  [here](https://github.com/PTB-OEDA/VIEWS2-DensityForecasts/blob/main/baseline-views-forecasts.R)
+
+# `cm` models with covariates
+
+Add models in this section with covariates.
+
+## Climate
+
+Replicate something from above with say rainfall or some other climate
+measure.
+
+## Demography
+
+Use a demographic covariate in a model like log(IMR).
+
+## Civil-Military Expenditures
+
+Include a civ-mil expenditure covariate.
+
+# References
+
+<div id="refs" class="references csl-bib-body hanging-indent"
+entry-spacing="0">
+
+<div id="ref-dunn2005series" class="csl-entry">
+
+Dunn, Peter K, and Gordon K Smyth. 2005. “Series Evaluation of Tweedie
+Exponential Dispersion Model Densities.” *Statistics and Computing* 15:
+267–80.
+
+</div>
+
+<div id="ref-dunn2008evaluation" class="csl-entry">
+
+———. 2008. “Evaluation of Tweedie Exponential Dispersion Model Densities
+by Fourier Inversion.” *Statistics and Computing* 18 (1): 73–86.
+
+</div>
+
+<div id="ref-dunn2017tweedie" class="csl-entry">
+
+Dunn, PK. 2017. “Tweedie: Evaluation of Tweedie Exponential Family
+Models.” *R Package Version* 2 (3).
+
+</div>
+
+<div id="ref-Jorgensen87" class="csl-entry">
+
+Jorgensen, Bent. 1987. “Exponential Dispersion Models.” *Journal of the
+Royal Statistical Society. Series B (Methodological)* 49 (2): 127–62.
+<http://www.jstor.org/stable/2345415>.
+
+</div>
+
+<div id="ref-jorgensen1997theory" class="csl-entry">
+
+———. 1997. *The Theory of Dispersion Models*. Chapman & Hall / CRC.
+
+</div>
+
+<div id="ref-tweedie1984index" class="csl-entry">
+
+Tweedie, Maurice CK. 1984. “An Index Which Distinguishes Between Some
+Important Exponential Families.” In *Statistics: Applications and New
+Directions: Proc. Indian Statistical Institute Golden Jubilee
+International Conference*, edited by JK Ghosh and J Roy, 579–604. Indian
+Statistical Institute, Calcutta.
+
+</div>
+
+<div id="ref-zhang2013likelihood" class="csl-entry">
+
+Zhang, Yanwei. 2013. “Likelihood-Based and Bayesian Methods for Tweedie
+Compound Poisson Linear Mixed Models.” *Statistics and Computing* 23:
+743–57.
+
+</div>
+
+</div>
