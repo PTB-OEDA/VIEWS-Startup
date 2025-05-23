@@ -42,7 +42,7 @@ Here begin with setting up the training data as provided by
 takes the data as given from ViEWS and reads it into several data frames
 and some subsets.
 
-### Reading in data
+## Reading in data
 
 Now these are compressed, which means there are only data for all
 observations that are observed.
@@ -169,7 +169,7 @@ print(sb_quantiles)
 ```
 Of note here is that the lower 75th to 85th percentile of the distribution is zeros in almost all of the training data.  In recent years this increases slightly.  But this is why baseline predictions of zero or only a recent mean and important for comparison
 
-### Some key time series summaries of variation
+## Some key time series summaries of variation
 
 To better see the changes in the data over time, consider the standard deviation time series plot given earlier.  This plot seems to indicate that in more recent years of the training data the variance is larger.  A quick way to see this is to look at the *logarithm* of the standard deviation:
 
@@ -286,7 +286,7 @@ Key idea is that these have a positive mass at zero: so there is just some proba
 Tweedie random variables are are subject to scale invariance also known as reproductive exponential dispersion:
 
 $$
-  c\operatorname {Tw} _{p}(\mu ,\sigma ^{2})=\operatorname {Tw} _{p}(c\mu ,c^{2-p}\sigma ^{2}).
+  \operatorname{Tw} _{p}(\mu ,\sigma ^{2})=\operatorname{Tw _{p}}(c\mu ,c^{2-p}\sigma ^{2}).
 $$
 [@jorgensen1997theory Theorem 4.1]
 
@@ -398,7 +398,7 @@ Plot summaries of the key parameters of the Tweedie models for each time period 
 
 Begin by extracting out the fitted model objects from the Tweedie models fit earlier.
 
-```{r summs, include=TRUE, fig.height=6, fig.align='center', fig.keep='last', fig.cap='Tweedie models parameters for each `cm`.  Phi is the dispersion parameter, p is the power parameter', cache=TRUE}
+```{r summs, include=TRUE, fig.height=6, fig.align='center', fig.keep='last', fig.cap='Tweedie models parameters for each month.  Phi is the dispersion parameter, p is the power parameter', cache=TRUE}
 # Now summarize the results
 all.tw.sum <- matrix(unlist(all.tw), ncol=2, byrow = TRUE)
 
@@ -452,7 +452,7 @@ legend(2013, 0.925,
 
 This section shows how to set up some simple baseline prediction models for each country-month in the data.
 
-### Basic count regressions
+## Basic count regressions
 
 This section sets up a series of count regression models.  It assumes you split the data into training-test splits and fit the following models:
 
@@ -831,15 +831,17 @@ Here, $H$ is the Heaviside function: $H(x-x_a) = 0$ if $(x-x_a)<0$ and $H(x-x_a)
 
 ## A CRPS Visual
 
-This is an example of what goes into a CRPS calculation for a set of observations scored against their forecast densities.
+This is an example of what goes into a CRPS calculation for a set of observations scored against their forecast densities.  This is based on the appendix to [@Hegreetal2025](https://doi.org/10.1177/00223433241300862).
 
-![Example from Hegre et al. (2024; Figure 3)](Hegreetal2024-Fig3.png) Notice then that an "aggregate" CRPS is made up of sums of the various grey areas described above.
+![Example from Hegre et al. (2025; Figure 3)](Hegreetal2024-Fig3.png) Notice then that an "aggregate" CRPS is made up of sums of the various grey areas described above.
 
 ## CRPS in practice
 
--   In application, an average of the score often is calculated over this set of forecasts or grid points, $k$: $$
+-   In application, an average of the score often is calculated over this set of forecasts or grid points, $k$: 
+$$
     \overline{CRPS} = \sum_{k}w_kCRPS(P_k,x_{a}^{k})
-    $$ where $w_k$ are weights set by the forecaster (typically, $w_k = \frac{1}{k}$).
+$$ 
+where $w_k$ are weights set by the forecaster (typically, $w_k = \frac{1}{k}$).
 
 -   CRPS scores will typically differ from RMSE and MAE forecast metrics rankings. This is because they are scoring the congruence of the full forecast density to the observed data.
 
@@ -868,7 +870,7 @@ So in this application and example the *negative binomial* models have the best 
 
 Contrast this with what you would get from using the full densities in the `scoringutils` package. Another example here, but in this one we stack the forecasts into a dataset and label them by model as above:
 
-```{r scored_demo, echo=TRUE}
+```{r scored_demo, echo=TRUE, message=FALSE, cache=FALSE}
 system.time(scored.out <- score(as_forecast_sample(all.stacked,
                                 forecast_unit = c("model", "month_id", "isoab"))))
 
@@ -971,7 +973,7 @@ where $R_{XY}$ is the correlation of $X$ and $Y$.
 Using the law of cosines $c^2 = a^2 + b^2 - 2ab \cdot cos(\theta)$, where $\theta =
   arccos(R_{XY})$.
 
-For details on implementation, see [@ANZEL2023107843,@openair]
+For implementation, see [@ANZEL2023107843] and [@openair].
 
 ## Taylor Diagram example code
 

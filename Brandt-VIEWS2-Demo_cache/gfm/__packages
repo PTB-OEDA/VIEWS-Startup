@@ -8,3 +8,6 @@ snow
 MASS
 pscl
 zoo
+scoringutils
+magrittr
+dplyr

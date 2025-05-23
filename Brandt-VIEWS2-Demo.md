@@ -6,11 +6,14 @@ May 22, 2025
 
 - [Introduction](#introduction)
 - [Country-Month Data setup](#country-month-data-setup)
+  - [Reading in data](#reading-in-data)
   - [Basic data manipulation for
     country-months](#basic-data-manipulation-for-country-months)
 - [Basic Time Series Plots of all the SB killings
   data](#basic-time-series-plots-of-all-the-sb-killings-data)
 - [Distributional summaries](#distributional-summaries)
+  - [Some key time series summaries of
+    variation](#some-key-time-series-summaries-of-variation)
   - [Simple model choices for `cm`
     data](#simple-model-choices-for-cm-data)
 - [Tweedie distribution models](#tweedie-distribution-models)
@@ -20,6 +23,7 @@ May 22, 2025
 - [Tweedie models for ’`cm` data](#tweedie-models-for-cm-data)
 - [Time series parameter summaries](#time-series-parameter-summaries)
 - [Simple prediction models](#simple-prediction-models)
+  - [Basic count regressions](#basic-count-regressions)
   - [Demo of the count models over train-test
     splits](#demo-of-the-count-models-over-train-test-splits)
 - [Practical Forecast Scoring](#practical-forecast-scoring)
@@ -62,7 +66,7 @@ Here begin with setting up the training data as provided by
 takes the data as given from ViEWS and reads it into several data frames
 and some subsets.
 
-### Reading in data
+## Reading in data
 
 Now these are compressed, which means there are only data for all
 observations that are observed.
@@ -344,7 +348,7 @@ distribution is zeros in almost all of the training data. In recent
 years this increases slightly. But this is why baseline predictions of
 zero or only a recent mean and important for comparison
 
-### Some key time series summaries of variation
+## Some key time series summaries of variation
 
 To better see the changes in the data over time, consider the standard
 deviation time series plot given earlier. This plot seems to indicate
@@ -530,7 +534,7 @@ as reproductive exponential dispersion:
 
 ``` math
 
-  c\operatorname {Tw} _{p}(\mu ,\sigma ^{2})=\operatorname {Tw} _{p}(c\mu ,c^{2-p}\sigma ^{2}).
+  \operatorname{Tw} _{p}(\mu ,\sigma ^{2})=\operatorname{Tw _{p}}(c\mu ,c^{2-p}\sigma ^{2}).
 ```
 (Jorgensen 1997 Theorem 4.1)
 
@@ -716,10 +720,10 @@ plot(twp, main="")
 
 <div class="figure" style="text-align: center">
 
-<img src="Brandt-VIEWS2-Demo_files/figure-gfm/summs-1.png" alt="Tweedie models parameters for each `cm`.  Phi is the dispersion parameter, p is the power parameter"  />
+<img src="Brandt-VIEWS2-Demo_files/figure-gfm/summs-1.png" alt="Tweedie models parameters for each month.  Phi is the dispersion parameter, p is the power parameter"  />
 <p class="caption">
 
-Tweedie models parameters for each `cm`. Phi is the dispersion
+Tweedie models parameters for each month. Phi is the dispersion
 parameter, p is the power parameter
 </p>
 
@@ -775,7 +779,7 @@ baseline frequency of zero.
 This section shows how to set up some simple baseline prediction models
 for each country-month in the data.
 
-### Basic count regressions
+## Basic count regressions
 
 This section sets up a series of count regression models. It assumes you
 split the data into training-test splits and fit the following models:
@@ -1263,9 +1267,11 @@ See the next slide).
 ## A CRPS Visual
 
 This is an example of what goes into a CRPS calculation for a set of
-observations scored against their forecast densities.
+observations scored against their forecast densities. This is based on
+the appendix to [Hegre et al.
+(2025)](https://doi.org/10.1177/00223433241300862).
 
-![Example from Hegre et al. (2024; Figure 3)](Hegreetal2024-Fig3.png)
+![Example from Hegre et al. (2025; Figure 3)](Hegreetal2024-Fig3.png)
 Notice then that an “aggregate” CRPS is made up of sums of the various
 grey areas described above.
 
@@ -1323,40 +1329,13 @@ system.time(scored.out <- score(as_forecast_sample(all.stacked,
 ```
 
     ##    user  system elapsed 
-    ##   7.614   0.333   3.944
+    ##   7.656   0.362   4.008
 
 ``` r
 # Get summaries by correct units of evaluation
 library(magrittr)
-```
-
-    ## 
-    ## Attaching package: 'magrittr'
-
-    ## The following object is masked from 'package:tidyr':
-    ## 
-    ##     extract
-
-``` r
 library(dplyr)
-```
 
-    ## 
-    ## Attaching package: 'dplyr'
-
-    ## The following object is masked from 'package:MASS':
-    ## 
-    ##     select
-
-    ## The following objects are masked from 'package:stats':
-    ## 
-    ##     filter, lag
-
-    ## The following objects are masked from 'package:base':
-    ## 
-    ##     intersect, setdiff, setequal, union
-
-``` r
 crps <- scored.out %>% 
   summarise_scores(by=c("model", "month_id"), na.rm=TRUE) %>%
   select(c("model", "month_id", "crps"))
@@ -1558,7 +1537,8 @@ Using the law of cosines $`c^2 = a^2 + b^2 - 2ab \cdot cos(\theta)`$,
 where $`\theta =
   arccos(R_{XY})`$.
 
-For details on implementation, see Carslaw and Ropkins (2012)
+For implementation, see (Anžel, Heider, and Hattab 2023) and (Carslaw
+and Ropkins 2012).
 
 ## Taylor Diagram example code
 
@@ -1904,6 +1884,17 @@ by Fourier Inversion.” *Statistics and Computing* 18 (1): 73–86.
 
 Dunn, PK. 2017. “Tweedie: Evaluation of Tweedie Exponential Family
 Models.” *R Package Version* 2 (3).
+
+</div>
+
+<div id="ref-Hegreetal2025" class="csl-entry">
+
+Hegre, Håvard, Paola Vesco, Michael Colaresi, Jonas Vestby, Alexa
+Timlick, Noorain Syed Kazmi, Angelica Lindqvist-McGowan, et al. 2025.
+“The 2023/24 VIEWS Prediction Challenge: Predicting the Number of
+Fatalities in Armed Conflict, with Uncertainty.” *Journal of Peace
+Research* 0 (0): 00223433241300862.
+<https://doi.org/10.1177/00223433241300862>.
 
 </div>
 
