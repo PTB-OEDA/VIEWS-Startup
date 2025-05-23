@@ -18,7 +18,7 @@ output:
   pdf_document:
     toc: yes
     toc_depth: '2'
-description: Data and model specification documentation for ViEWS2 forecasts
+description: Data and model specification documentation for ViEWS forecasts
 bibliography: Forecast.bib
 ---
 
@@ -462,6 +462,8 @@ This section sets up a series of count regression models.  It assumes you split 
 - ZINB = ZI Negbin
 - TW = Tweedie 
 
+A single unit-specific dummy variable is includes to address country heterogeneity.  This is the pre-specified factor `geo` in the regressions below.
+
 This is all done via the `count.cf` function defined below.  The result is a set of `N` simulated draws from the forecast density for each model and outcome to be predicted in the test data.
 
 ```{r basiccounts, echo=TRUE, message=FALSE}
@@ -485,6 +487,8 @@ set.seed(145)
 # ZINB = ZI Negbin
 # TW = Tweedie 
 #
+# basic model uses the `geo` variable as a covariate.
+# 
 # After MLE fits, generates and returns N draws from the prediction
 # density for each of these models
 #
@@ -634,14 +638,16 @@ legend("bottomright", legend=c("Poisson", "Actual"), col=1:2, lwd=2)
 
 ## Forecast Formatting
 
-Recall though that one can use the sample of `N = 100` draws of the forecasts for each `cm` to construct various other metrics for performance by units (countries, time or both).  To see this, consider making a dataset of the `N`` predictions for the Poisson model for each of the `cm` in 2024.  This is done like this:
+Recall though that one can use the sample of `N = 100` draws of the forecasts for each `cm` to construct various other metrics for performance by units (countries, time or both).
+
+Consider making a dataset of the `N` predictions for the Poisson, Tweedie, and other baseline models for each of the `cm` in 2024.  This is done like this:
 
 ```{r merge_cm_pred}
 #### Forecasts formatting setup ####
 # This is different than in some other applications, but the logic is meant
 # to be clear here.
 
-# Add case idtenifiers to the forecasts
+# Add case idtenifiers to the forecasts for the Poisson and Tweedie models
 forecast.P <- cbind(test[,c(1,2)], count.out$P)   # Poisson model ones
 forecast.TW <- cbind(test[,c(1,2)], count.out$TW) # Tweedie ones
 
@@ -666,6 +672,7 @@ TW.stacked <- reshape(forecast.TW,
                       times = 1:N)
 TW.stacked$model <- "Tweedie"
 
+
 # Cleanup
 rm(forecast.P, forecast.TW)
 
@@ -677,11 +684,24 @@ TW.stacked <- merge(TW.stacked, test,
                     by.x = c("month_id", "country_id"),
                     by.y = c("month_id", "country_id"))
 
-# Some reorg for below
-all.stacked <- rbind(P.stacked, TW.stacked)
+# Make some other baseline forecasts
+# All zeros
+Zero.stacked <- TW.stacked
+Zero.stacked$predicted <- 0
+Zero.stacked$model <- "Zeros"
+
+# Common Poisson mean across the training data
+Mean.stacked <- TW.stacked
+Mean.stacked$predicted <- rpois(nrow(Mean.stacked), mean(test$y))
+Mean.stacked$model <- "Training Mean"
+
+# Some reorg for below: here we stack the forecasts into a data.frame
+all.stacked <- rbind(P.stacked, TW.stacked, Zero.stacked, Mean.stacked)
+
+# Rename the outcome as `observed` since this is expected in code below.
 all.stacked$observed <- all.stacked$y
 
-rm(P.stacked, TW.stacked)
+rm(P.stacked, TW.stacked, Zero.stacked, Mean.stacked)
 
 ```
 
@@ -704,8 +724,9 @@ qqplot(x = all.stacked[all.stacked$model=="Tweedie",4],
        xlab="Tweedie Predictions",
        ylab="Actuals", main = "QQ plot")
 plot(ecdf(all.stacked[all.stacked$model=="Tweedie",4]), 
-     xlab="Tweedie Predictions", ylab="Cumulative  Density", main="ECDF")
-lines(ecdf(tmp$y), col="red")
+     xlab="Tweedie Predictions", 
+     ylab="Cumulative  Density", main="ECDF")
+lines(ecdf(all.stacked[all.stacked$model=="Tweedie",22]), col="red")
 legend("bottomright", legend=c("Tweedie", "Actual"), col=1:2, lwd=2)
 
 ```
@@ -781,7 +802,9 @@ The goal of probabilistic forecasting is to achieve a high degree of sharpness s
 
 How this is done and interpreted is an ongoing research topic, per [Hullman (2024)](https://statmodeling.stat.columbia.edu/2024/11/15/calibration-for-everyone-and-every-decision-maybe/)
 
-## CRPS: measures calibration and sharpness
+### CRPS: measures calibration and sharpness
+
+To address the problems of calibration and sharpness a proper scoring rule is used to summarize the density.  For the kind of forecasts being generated here a good choice of this is a *continuous rank probability score* or CRPS.
 
 -   It measures the squared difference between the total areas of the predicted and observed cumulative distributions
 
@@ -808,6 +831,8 @@ Here, $H$ is the Heaviside function: $H(x-x_a) = 0$ if $(x-x_a)<0$ and $H(x-x_a)
 
 ## A CRPS Visual
 
+This is an example of what goes into a CRPS calculation for a set of observations scored against their forecast densities.
+
 ![Example from Hegre et al. (2024; Figure 3)](Hegreetal2024-Fig3.png) Notice then that an "aggregate" CRPS is made up of sums of the various grey areas described above.
 
 ## CRPS in practice
@@ -818,9 +843,13 @@ Here, $H$ is the Heaviside function: $H(x-x_a) = 0$ if $(x-x_a)<0$ and $H(x-x_a)
 
 -   CRPS scores will typically differ from RMSE and MAE forecast metrics rankings. This is because they are scoring the congruence of the full forecast density to the observed data.
 
-Forecast scoring or metrics measure how well the forecast (denisty) compares to the obsereved data over the test horizon or cases.  
+-   Forecast scoring or metrics measure how well the forecast (density) compares to the observed data over the test horizon or cases.  
 
-### CRPS
+-   There is always some averaging going on here: across geography, times, etc.
+
+## CRPS for `cm` models
+
+This shows how to use the basic `scoringutils` package functions to score the list of forecasts constructed in `count.out`.
 
 ```{r scoringdemo, echo=TRUE, message=FALSE, warning=FALSE}
 library(scoringutils)
@@ -837,8 +866,7 @@ print(unlist(check.crps), digits = 3)
 
 So in this application and example the *negative binomial* models have the best CRPS scores.  
 
-
-Contrast this with what you would get from using the full densities in the `scoringutils` package. Another example here:
+Contrast this with what you would get from using the full densities in the `scoringutils` package. Another example here, but in this one we stack the forecasts into a dataset and label them by model as above:
 
 ```{r scored_demo, echo=TRUE}
 system.time(scored.out <- score(as_forecast_sample(all.stacked,
@@ -869,7 +897,7 @@ head(rmse)
 str(rmse)
 ```
 
-This gives back the `rmse` for each country over the time periods for each of the two models.
+This gives back the `rmse` for each country over the time periods for each of the models.  (The illustration only displays the first 6 values.)
 
 ## Metrics over time horizons
 
@@ -881,7 +909,7 @@ crps.ts <- scored.out %>% select(c("model", "month_id", "crps")) %>% arrange(mod
 
 # Arrange the time series and add names
 tmp <- crps.ts %>% summarise_scores(by=c("model", "month_id"))
-mnames <- unique(tmp$model)
+mnames <- unique(tmp$model, fromLast = TRUE)
 crps.ts1 <- matrix(tmp$crps, ncol=length(mnames))
 colnames(crps.ts1) <- mnames
 
@@ -890,171 +918,128 @@ crps.ts1 <- ts(crps.ts1, start=c(2024,1), freq=12)
 # These are the annualized CRPS to compare to their metrics
 # So this is all the years and models.
 
-plot(crps.ts1, plot.type="s", lty=1:2, ylab="CRPS Sum")
-legend("topleft", legend = mnames, lty=1:2)
+plot(crps.ts1, plot.type="s", ylab="CRPS Sum", col=1:length(mnames), 
+     lty=1:length(mnames), lwd=2)
+legend("topleft", legend = mnames, col=1:length(mnames),
+       lty=1:length(mnames), lwd=2, cex = 0.65)
+
+```
+From this one can see the relative performance of each of the models (distributions) over the test horizon of 2024. The Poisson model is initially worst, followed by the training data mean.  Note how a forecast model of "all zeros" is actually often the best performing one here. 
+
+# Additional forecast metrics 
+
+1.  Do the same for other scores and metrics.
+2.  Make other relevant subsets of all of this. (What are these?)
+3.  Consider diagrams in the Brandt (2024) paper "Evaluating and Scoring in Conflict and Violence Forecasts":
+    1.  Taylor Diagrams
+    2.  Standard deviation ratios
+    3.  Other metrics.
+
+See Dietze, M. C. (2017). [Ecological Forecasting](https://doi.org/10.2307/j.ctvc7796h) Princeton University Press.
+
+## Taylor Diagrams
+
+Taylor diagrams [@Taylor2001] are a visual tool that plot the standardized relative variance of the forecasts to the data at $(1,0)$ in a Cartesian $2^D$ plane.
+
+-   The x-axis is then the relative variance of the data and the y-axis is the relative variance of the forecasts
+
+-   This can also be done for the unstandardized data too.
+
+-   The corresponding circular arcs and the angles of the points for each conditional forecast relative to the data in such a plot then measure the correlation of the two quantities of interest
+
+-   plot demonstrates the root mean squared error differences in the forecasts and the data as a function of their (relative) standard deviations and correlation.
+
+-   This can then be conditioned over the posterior forecast sample attributes (models, time periods, etc.).
+
+## Taylor Diagram math
+
+This figure places the normalized standard deviation of the data on the x-axis and compares it to the normalized standard deviation of the forecasts on the y-axis.
+
+Based on the law of cosines these quantities can be used to relate the correlation and the standard deviation of the data and the forecasts.
+
+For two variables $X$ and $Y$, the centered root mean squared error (CRMSE) is
+
+$$
+\begin{aligned}
+    CRMSE(X,Y) &= \sqrt{\frac{1}{n} \sum_{i=1}^n [(x_i - \mu_x)(y_i - \mu_y)]^2}\\
+    CRMSE(X,Y)^2 &= \sigma_X^2 + \sigma_Y^2  - 2\sigma_X \sigma_Y R_{XY}
+\end{aligned}
+$$
+
+where $R_{XY}$ is the correlation of $X$ and $Y$.
+
+Using the law of cosines $c^2 = a^2 + b^2 - 2ab \cdot cos(\theta)$, where $\theta =
+  arccos(R_{XY})$.
+
+For details on implementation, see [@ANZEL2023107843,@openair]
+
+## Taylor Diagram example code
+
+This uses the `openair` package implementation of the Taylor diagram.
+
+```{r taylordemo, echo=TRUE, fig.keep='last', warning=FALSE, fig.align='center', fig.width=6, fig.height=4, fig.cap="Taylor Diagrams of 2024 `cm` forecast performance"}
+#### Taylor diagram ####
+library(openair)
+
+# Normalized Taylor diagrams
+par(mfrow=c(1,2))
+TaylorDiagram(all.stacked,
+              obs="observed", mod="predicted",
+              group=c("model"), #type = "month_id",
+              key.title = "Model",
+              normalise=TRUE,
+              main = "Normalized Taylor Diagram")
+
+# UN-Normalized Taylor diagram for GLMMs
+
+TaylorDiagram(all.stacked,
+              obs="observed", mod="predicted",
+              group=c("model"), # type = "year",
+              key.title = "Model",
+              normalise=FALSE,
+              main = "Unnormalized Taylor Diagram")
 
 ```
 
-<!-- ## Additions one can consider -->
+## Standard Deviation Ratios
 
-<!-- 1.  Do the same for other scores and metrics. -->
-<!-- 2.  Make other relevant subsets of all of this. (What are these?) -->
-<!-- 3.  Consider diagrams in the Brandt (2024) paper "Evaluating and Scoring in Conflict and Violence Forecasts": -->
-<!--     1.  Taylor Diagrams -->
-<!--     2.  Standard deviation ratios -->
-<!--     3.  Other metrics. -->
+Ratio of the model prediction standard deviations to the observed. The idea is from @dietze2017ecological.  Here one first computes the forecast standard deviations:
 
-<!-- See Dietze, M. C. (2017). [Ecological Forecasting](https://doi.org/10.2307/j.ctvc7796h) Princeton University Press. -->
+```{r sdratios, echo=TRUE}
+#### SD Ratios ####
+model.ses <- scored.out %>%
+  summarise_scores(by = c("model", "month_id"), na.rm=TRUE) %>%
+  group_by(model) %>% select(model, se_mean, month_id) %>% arrange(model, month_id)
 
-<!-- ## Taylor Diagrams -->
+# Organize and label columns with model names -->
+mdls <- unique(model.ses$model) 
+sd.model <- matrix(sqrt(model.ses$se_mean), ncol=length(mdls)) 
+colnames(sd.model) <- mdls 
 
-<!-- Taylor diagrams [@Taylor2001] are a visual tool that plot the standardized relative variance of the forecasts to the data at $(1,0)$ in a Cartesian $2^D$ plane. -->
+```
 
-<!-- -   The x-axis is then the relative variance of the data and the y-axis is the relative variance of the forecasts -->
+Next, one constructs time series for these:
 
-<!-- -   This can also be done for the unstandardized data too. -->
+```{r, sds_timeseries, echo=TRUE}
+# Get the relevant time series setup 
+sd.model <- ts(sd.model, start=c(2024,1), freq=12) 
+sd.obs <- window(roll.ged.sb[,2], start=c(2024,1), end=c(2024,12)) 
+```
 
-<!-- -   The corresponding circular arcs and the angles of the points for each conditional forecast relative to the data in such a plot then measure the correlation of the two quantities of interest -->
+Now plot these ratios as time series
 
-<!-- -   plot demonstrates the root mean squared error differences in the forecasts and the data as a function of their (relative) standard deviations and correlation. -->
+```{r sds_ts_plot, echo=TRUE, fig.keep='last', warning=FALSE, fig.align='center', fig.width=6, fig.height=4, fig.cap="Standard deviation ratio plot of 2024 `cm` forecast performance"}
+# Plot the SDs
+# par(mfcol=c(3,2))
+plot(window(sd.model/sd.obs, start=c(2024,1), end=c(2024,12)),
+     plot.type = "single", col=1:ncol(sd.model), lwd=2,
+     xlab = "Month", ylab = expression(Model[SD]/Data[SD]),
+     main="Standard deviation ratios, 2024")
+legend("topright", legend = colnames(sd.model), col=1:ncol(sd.model), lwd=2)
 
-<!-- -   This can then be conditioned over the posterior forecast sample attributes (models, time periods, etc.). -->
+print(sd.model/sd.obs, digits=3)
 
-<!-- ## Taylor Diagram math -->
-
-<!-- This figure places the normalized standard deviation of the data on the x-axis and compares it to the normalized standard deviation of the forecasts on the y-axis. -->
-
-<!-- Based on the law of cosines these quantities can be used to relate the correlation and the standard deviation of the data and the forecasts. -->
-
-<!-- For two variables $X$ and $Y$, the centered root mean squared error (CRMSE) is -->
-
-<!-- $$ -->
-<!-- \begin{aligned} -->
-<!--     CRMSE(X,Y) &= \sqrt{\frac{1}{n} \sum_{i=1}^n [(x_i - \mu_x)(y_i - \mu_y)]^2}\\ -->
-<!--     CRMSE(X,Y)^2 &= \sigma_X^2 + \sigma_Y^2  - 2\sigma_X \sigma_Y R_{XY} -->
-<!-- \end{aligned} -->
-<!-- $$ -->
-
-<!-- where $R_{XY}$ is the correlation of $X$ and $Y$. -->
-
-<!-- Using the law of cosines $c^2 = a^2 + b^2 - 2ab \cdot cos(\theta)$, where $\theta = -->
-<!--   arccos(R_{XY})$. -->
-
-<!-- For details on implementation, see [@ANZEL2023107843,@openair] -->
-
-<!-- ## Taylor Diagram example code -->
-
-<!-- ```{r taylordemo, echo=TRUE} -->
-<!-- #### Taylor diagram #### -->
-
-<!-- library(openair) -->
-
-<!-- # Normalized Taylor diagrams -->
-
-<!-- TaylorDiagram(forcs[forcs$model!="Poisson GAM" & -->
-<!--                       forcs$model!="Neg Binom GAM" & -->
-<!--                       forcs$model!="Tweedie GAM",], -->
-<!--               obs="observed", mod="predicted", -->
-<!--               group=c("model"), type = "year", -->
-<!--               key.title = "Model", -->
-<!--               normalise=TRUE, -->
-<!--               main = "Normalized Taylor Diagram") -->
-
-<!-- # UN-Normalized Taylor diagram for GLMMs -->
-
-<!-- TaylorDiagram(forcs[forcs$model!="Poisson GAM" & -->
-<!--                       forcs$model!="Neg Binom GAM" & -->
-<!--                       forcs$model!="Tweedie GAM",], -->
-<!--               obs="observed", mod="predicted", -->
-<!--               group=c("model"), type = "year", -->
-<!--               key.title = "Model", -->
-<!--               normalise=FALSE, -->
-<!--               main = "Unnormalized Taylor Diagram") -->
-
-
-<!-- # Drop 2023 -->
-<!-- TaylorDiagram(forcs[forcs$model!="Poisson GAM" & -->
-<!--                       forcs$model!="Neg Binom GAM" & -->
-<!--                       forcs$model!="Tweedie GAM" &  -->
-<!--                       forcs$year < 2023,], -->
-<!--               obs="observed", mod="predicted", -->
-<!--               group=c("model"), type = "year", -->
-<!--               key.title = "Model", -->
-<!--               normalise=TRUE, -->
-<!--               main = "Normalized Taylor Diagram") -->
-
-<!-- # # Experimenting... -->
-<!-- TaylorDiagram(forcs[forcs$model!="Poisson GAM" & -->
-<!--                       forcs$model!="Neg Binom GAM" & -->
-<!--                       forcs$model!="Tweedie GAM",], -->
-<!--               obs="observed", mod="predicted", -->
-<!--               group=c("model", "country_id"), type = "year", -->
-<!--               key.title = "Model", -->
-<!--               normalise=TRUE, -->
-<!--               main = "") -->
-
-<!-- TaylorDiagram(forcs[forcs$model!="Poisson GAM" & -->
-<!--                       forcs$model!="Neg Binom GAM" & -->
-<!--                       forcs$model!="Tweedie GAM",], -->
-<!--               obs="observed", mod="predicted", -->
-<!--               group=c("model", "year")) -->
-
-<!-- ``` -->
-
-<!-- ## Standard Deviation Ratios -->
-
-<!-- Ratio of the model prediction standard deviations to the observed. The idea is from @dietze2017ecological: -->
-
-<!-- ```{r othercode, echo=TRUE, fig.align='center', fig.keep='all'} -->
-<!-- #### SD Ratios #### -->
-<!-- model.ses <- scored.out %>% -->
-<!--   summarise_scores(by = c("model", "month_id"), na.rm=TRUE) %>% -->
-<!--   group_by(model) %>% select(model, se_mean, month_id) %>% arrange(model, month_id) -->
-
-<!-- # Organize and label columns with model names -->
-<!-- mdls <- unique(model.ses$model) -->
-<!-- sd.model <- matrix(sqrt(model.ses$se_mean), ncol=length(mdls)) -->
-<!-- colnames(sd.model) <- mdls -->
-
-<!-- # Get the relevant time series setup -->
-<!-- sd.model <- ts(sd.model, start=c(2018,1), freq=12) -->
-<!-- sd.obs <- window(roll.ged.sb[,3], start=c(2018,1), end=c(2023,12)) -->
-
-<!-- # Plot the SDs -->
-<!-- par(mfcol=c(3,2)) -->
-<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2018,1), end=c(2018,12)), -->
-<!--      plot.type = "single", col=1:6, lwd=2, -->
-<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD]), -->
-<!--      main="Standard deviation ratios, 2018") -->
-<!-- abline(h=1, lty=2) -->
-<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2019,1), end=c(2019,12)), -->
-<!--      plot.type = "single", col=1:6, lwd=2, -->
-<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD]), -->
-<!--      main="Standard deviation ratios, 2019") -->
-<!-- abline(h=1, lty=2) -->
-
-<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2020,1), end=c(2020,12)), -->
-<!--      plot.type = "single", col=1:6, lwd=2, -->
-<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD]), -->
-<!--      main="Standard deviation ratios, 2020") -->
-<!-- abline(h=1, lty=2) -->
-<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2021,1), end=c(2021,12)), -->
-<!--      plot.type = "single", col=1:6, lwd=2, -->
-<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD]), -->
-<!--      main="Standard deviation ratios, 2021") -->
-<!-- abline(h=1, lty=2) -->
-
-<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2022,1), end=c(2022,12)), -->
-<!--      plot.type = "single", col=1:6, lwd=2, -->
-<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD]), -->
-<!--      main="Standard deviation ratios, 2022") -->
-<!-- abline(h=1, lty=2) -->
-<!-- plot(window(sd.model[,4:9]/sd.obs, start=c(2023,1), end=c(2023,12)), -->
-<!--      plot.type = "single", col=1:6, lwd=2, -->
-<!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD]), -->
-<!--      main="Standard deviation ratios, 2023") -->
-<!-- abline(h=1, lty=2) -->
-
+```
 
 <!-- # Now can add / contrast the prediction errors with the data and its -->
 <!-- # observed volatility... -->
@@ -1071,18 +1056,21 @@ legend("topleft", legend = mnames, lty=1:2)
 <!--      xlab = "Month", ylab = expression(Model[SD]/Data[SD])) -->
 <!-- abline(h=1, lty=2) -->
 
-
 <!-- ``` -->
 
-## Benchmarks comparisons
+## Benchmarks comparisons via skill scores
 
-Add examples here of comparisons to VIEWS benchmarks?
+One result needed to score the forecasts are *skill scores*.  Skill scores are a normalization of model scores to some pre-chosen baseline.  So the standard deviation time series in the previous section are a verison of a skill score.  
+
+The `scoringutils` package can automatically generate skill scores across the forecast results.
 
 ## Skill scores
-How to get skill scores for say CRPS and RMSE metrics:
+To get skill scores for say CRPS and RMSE metrics one uses:
 
 ```{r skill_scores, echo=TRUE}
 get_pairwise_comparisons(scored.out)
+
+get_pairwise_comparisons(scored.out, metric = "crps")
 
 ```
 
@@ -1092,11 +1080,11 @@ get_pairwise_comparisons(scored.out, by="month_id")
 
 ```
 
-## Setting up other baselines
+<!-- ## Setting up other baselines -->
 
-- Add more of the models to the section where the models are stacked.
+<!-- - Add more of the models to the section where the models are stacked. -->
 
-- Comparisons to other VIEWS baseline models are addressed [here](https://github.com/PTB-OEDA/VIEWS2-DensityForecasts/blob/main/baseline-views-forecasts.R)
+<!-- - Comparisons to other VIEWS baseline models are addressed [here](https://github.com/PTB-OEDA/VIEWS2-DensityForecasts/blob/main/baseline-views-forecasts.R) -->
 
 # `cm` models with covariates
 
