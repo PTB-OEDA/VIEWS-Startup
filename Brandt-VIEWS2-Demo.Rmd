@@ -15,6 +15,8 @@ output:
     toc_depth: 2
     collapsed: yes
     smooth_scroll: yes
+    code_folding: show
+    code_download: true
   pdf_document:
     toc: yes
     toc_depth: '2'
@@ -39,15 +41,35 @@ This demo shows how to read and process the initial data from VIEWS / UCDP.  Thi
 
 Here begin with setting up the training data as provided by
 [ViEWS](https://viewsforecasting.org/prediction-competition-2/). This
-takes the data as given from ViEWS and reads it into several data frames
-and some subsets.
+takes the data as given from ViEWS and reads it into several data frames and some subsets.  The next few steps do this initially so that one gets all of the necessary data in one place at the beginning of the analysis that follow.
+
+# Package loads
+
+This section handles loading all packages then used below. This will able be able to allow R Studio to handle in one section any installs / loads / libraries needed below.
+
+```{r loadit, echo=TRUE, message=FALSE}
+rm(list=ls())  # Clean start, I know...
+library(arrow)
+library(plotly)
+library(tidyr)
+library(ggplot2)
+library(statmod)
+library(tweedie)
+library(MASS)
+library(pscl)
+library(zoo)
+library(scoringutils)
+library(magrittr)
+#### Taylor diagram ####
+library(openair)
+
+```
 
 ## Reading in data
 
-Now these are compressed, which means there are only data for all
-observations that are observed.
+Now these are compressed, which means there are only data for all observations that are observed.
 
-*If you run your own version of this, you will likely need to change the paths to the input files.*  Here are links for the [codebooks](https://viewsforecasting.org/wp-content/uploads/cm_features_competition.pdf) or [here](https://www.dropbox.com/scl/fo/rkj4ttawoz9pv6x35r9cq/ACNAhhWCn6wCJvSv8ZeyMu4/cm_level_data?dl=0&preview=ideas_fastforward_2025_cm_features.pdf&rlkey=44eg0kk4w8yh8tm1f53vvpzps&subfolder_nav_tracking=1) and [input files](https://www.dropbox.com/scl/fo/rkj4ttawoz9pv6x35r9cq/APSd_RJxvk-fpNAteD4J1iY?rlkey=44eg0kk4w8yh8tm1f53vvpzps&e=1&st=r0qv5cz1&dl=0). 
+*If you run your own local version of this, you will likely need to change the paths to the input files.*  Here are links for the [codebooks](https://viewsforecasting.org/wp-content/uploads/cm_features_competition.pdf) or [here](https://www.dropbox.com/scl/fo/rkj4ttawoz9pv6x35r9cq/ACNAhhWCn6wCJvSv8ZeyMu4/cm_level_data?dl=0&preview=ideas_fastforward_2025_cm_features.pdf&rlkey=44eg0kk4w8yh8tm1f53vvpzps&subfolder_nav_tracking=1) and [input files](https://www.dropbox.com/scl/fo/rkj4ttawoz9pv6x35r9cq/APSd_RJxvk-fpNAteD4J1iY?rlkey=44eg0kk4w8yh8tm1f53vvpzps&e=1&st=r0qv5cz1&dl=0). 
 
 ```{r readdata, echo=TRUE, cache=TRUE, cache.rebuild = !file.exists("cm_data_121_542.parquet")}
 
@@ -59,8 +81,6 @@ destfile <- "cm_data_121_542.parquet"
 # DL with curl
 curl::curl_download(url = dl_link, destfile = destfile)
 
-# For the parquet files load the `arrow` package
-library(arrow)
 
 # This is the main data file
 cm <- read_parquet("cm_data_121_542.parquet")
@@ -118,6 +138,21 @@ rm(df1)
 
 ```
 
+One can now subset or select from an object like `dfs` in several ways:
+
+```{r selector, echo=TRUE}
+# Pull out rows for Libya
+Libya <- dfs[dfs$isoab=="LBY",]
+str(Libya)
+
+# All data since 2022
+post21 <- dfs[dfs$Year>2021,]
+
+str(post21)
+
+# Clean ip
+rm(post21)
+```
 
 # Basic Time Series Plots of all the SB killings data
 
@@ -192,9 +227,6 @@ plot(ts(freq.zeros[,2], start=c(1990,1), freq=12),
 Finally an interactive plot of the variation over months can be constructed as follows:
 
 ```{r multits, fig.keep='last', warning=FALSE}
-library(plotly)
-library(tidyr)
-library(ggplot2)
 
 x <- roll.ged.sb[,2]
 dmn <- list(month.abb, unique(floor(time(x))))
@@ -250,23 +282,29 @@ V(Y) &= \sigma^2 \mu^p
 \end{align}
 $$
 
-This is given as $Y$ follows a Tweedie density with power $p$ of the form $Y \sim TW_p(\mu, \sigma^2)$:
+This is given as $Y$ follows a Tweedie density with power $p$ of the form $Y \sim TW_p(\mu, \sigma^2)$ and $\theta$ is the canonical paramter of the cumulant of the distribution:
 
 $$
-\Pr(Y|\mu, \sigma^2) = \int_A \exp\left( \frac{\theta \cdot z - \kappa_p(\theta)}{\sigma^2}\right) \nu_\lambda dz
+\Pr(Y \in A) = \int_A \exp\left( \frac{\theta \cdot z - \kappa_p(\theta)}{\sigma^2}\right) \nu_\lambda dz
 $$
-where
+where the cumulant $\kappa()$ of the distribution is a function of $\theta$.  This is a piecewise function of the form 
 $$
 \kappa_p(\theta)=
 \begin{cases}
   \frac{\alpha-1}{\alpha} \left(\frac{\theta}{\alpha-1}\right)^\alpha,  & \text{for }p\neq 1,2\\
   -\log(-\theta), & \text{for }p=2\\
-  e^\theta, & \text{for }p=1
+  e^\theta, & \text{for }p=1.
 \end{cases}
 $$
 Typically note the mapping that $\alpha = \frac{p-2}{p-1}$ and $p = \frac{\alpha-2}{\alpha-1}$.   Numerical approximation must be used for evaluation and simulation [See @dunn2005series; @dunn2008evaluation; and @dunn2017tweedie].
 
-When $p$ takes on certain values, the Tweedie reduces to other known exponential distributions [See Sections 4.1 and 4.2 @jorgensen1997theory].  
+The variance function for the ED models is constructed from the canonical mapping of the derivatives of the cumulant for $\kappa()$ to the mean $\mu$.  IN this case these are 
+
+$$
+\tau(\theta) = \kappa^\prime(\theta) = \mu
+$$
+
+When $p$ takes on certain values, the Tweedie reduces to other known exponential distributions [See Sections 4.1 and 4.2 @jorgensen1997theory].  Additional details can be found in [Chapter 5 @jorgensen1997theory].
 
 Specifically these are
 
@@ -309,8 +347,6 @@ This formulation is useful because it manifests some well known properties:
 To understand the basic properties of the Tweedie model and its key uses in applications, consider the typical case of interest which is a random variable with an atom at zero with a small mean and large variance.  We can do this using a Tweedie distribution over various values of ${\mu,\phi,p}$.  THe following figure gives an illustration for different choices.
 
 ```{r densityexample, include=TRUE, warning=FALSE, fig.keep='last', fig.width=8, fig.height=8}
-library(statmod)
-library(tweedie)
 
 par(mfcol=c(5,5), oma = c(4,1,1,1), mar=c(4,3,1,1))
 for(mu in seq(0.5,2,0.5)) {
@@ -358,9 +394,11 @@ The figure belies the extra mass computed for the probability at zero (cf. Jorge
 
 This is a stability check on the data: can we even really generalize an ED like target density?  Do the parameters of the Tweedie fitted model to the data change or stay the same over time (months)?
 
+The reason ask this is that the dynamic representation of the counts and their stability are directly related to the distributions that best fit them.  This point is made in papers by [@BWFP2000] and [@Brandt_Williams_2001] and is a reason to suspect that Poisson, negative binomial and even some zero inflated models may be incorrect for these kinds of data.
+
+The following function and parallel code (it will use up to 8 CPU cores on your machine as written) estimates a Tweedie model for each monthly dataset from 1990-2024. 
+
 ```{r rolltw, include=TRUE, cache=TRUE}
-library(tweedie)
-library(statmod)
 
 oneperiod.fit <- function(y, xi.vec=seq(1.45, 1.775, by=0.005))
 {
@@ -393,8 +431,15 @@ stopCluster(cl)
 
 # Time series parameter summaries
 
-Plot summaries of the key parameters of the Tweedie models for each time period (month).  These examine the probabilty that there are zeros and how well one can fit the baseline variance of the data using a count model.
+Plot summaries of the key parameters of the Tweedie models for each time period (month).  These examine the probabilty that there are zeros and how well one can fit the baseline variance of the data using a count model.  
 
+The goals in looking at this are
+
+1.  whether there Tweedie parameters indicate the presence of a compound Poisson or dependent count distribution -- is $p \in (1,2)$.
+
+2.  changes in the $Pr(\textrm{ged_sb}\,=\,0)$ over time.
+
+3.  variance changes that are large or small across time.
 
 Begin by extracting out the fitted model objects from the Tweedie models fit earlier.
 
@@ -414,7 +459,7 @@ plot(twp, main="")
 
 Now plot the probability of a zero count from the Tweedie, Poisson, and data for comparison.
 
-```{r zeropred, echo=TRUE, fig.width=6, fig.align="center", fig.keep='last', fig.cap='Probabilty of zero prediction from the Tweedie model compared to baseline frequency of zero.'}
+```{r zeropred, echo=TRUE, fig.height=6, fig.width=6, fig.align="center", fig.keep='last', fig.cap='Probabilty of zero prediction from the Tweedie model compared to baseline frequency of zero.'}
 
 # Convert using Dunn and Smyth formula
 twp.convert <- sapply(1:nrow(twp), 
@@ -434,18 +479,24 @@ freq.zeros <- aggregate(dfs$ged_sb==0,
                         by=list(dfs$month_id), mean)
 
 # Poisson predictions make no sense
-# range(dpois(0, lambda=roll.ged.sb[,1]))
+psn.0 <- dpois(0, lambda=roll.ged.sb[,1])
 
+# Plotting: Tweedie prediction and observed.
+par(mfrow=c(2,1))
 plot(ts(cbind(twp.convert$p0, freq.zeros[,2]), 
         start=c(1990,1), freq=12),
      plot.type="single", lwd=2, lty=2:3, col=2:1, 
-     ylab = "Pr(ged_sb=0)")
+     ylab = "Pr(ged_sb=0)", cex.lab=0.8)
 
 legend(2013, 0.925, 
        c("Observed Frequency", "Tweedie Prediction"), col=2:1,
        lty=2:3, lwd=2, cex=0.75)
 
+plot(1-psn.0, lwd=2, lty=1, ylab="",
+     main="Pr(ged_sb=0) from a Poisson distribution", cex.lab=0.8)
 ```
+
+The Tweedie model captures this important property of the data.  The second graph with the Poisson result shows that using the per-month means misses the probability of the zeros because of the skewed nature of the distribution.
 
 
 # Simple prediction models
@@ -458,8 +509,8 @@ This section sets up a series of count regression models.  It assumes you split 
 
 - P = Poisson 
 - NB = Negbin
-- ZIP = ZI Poisson
-- ZINB = ZI Negbin
+- ZIP = Zero Inflated Poisson
+- ZINB = Zero Inflated Negbin
 - TW = Tweedie 
 
 A single unit-specific dummy variable is includes to address country heterogeneity.  This is the pre-specified factor `geo` in the regressions below.
@@ -467,12 +518,6 @@ A single unit-specific dummy variable is includes to address country heterogenei
 This is all done via the `count.cf` function defined below.  The result is a set of `N` simulated draws from the forecast density for each model and outcome to be predicted in the test data.
 
 ```{r basiccounts, echo=TRUE, message=FALSE}
-# Load needed libraries
-library(statmod)
-library(tweedie)
-library(MASS)
-library(pscl)
-library(zoo)
 
 set.seed(145)
 
@@ -617,7 +662,10 @@ The goal here is to compare each of the models produced in the last section to t
 
 A simple first comparison is just to look at the summaries of each of the 5 forecast models compared to the observed values for each country-month.  
 
-- Series of scatter, QQ, and then ECDF plots for the models.
+- Series of plots for the models:
+    - scatter
+    - QQ (quantile versus quantile), 
+    - Empirical cumulative distribution function (ECDF)
 - Various metrics for these.
 
 ```{r summary_forcs, fig.keep='last', fig.align='center', fig.width=6, fig.height=4, fig.cap="2024 `cm` Mean Poisson Predictions versus Actuals"}
@@ -635,6 +683,14 @@ lines(ecdf(tmp$y), col="red")
 legend("bottomright", legend=c("Poisson", "Actual"), col=1:2, lwd=2)
 
 ```
+
+The idea here is that if the predictions are good, then for a given model we expcet 
+
+- the scatter plots should be close to a 45-degree line
+- the QQ plot should align thw quantiles (deviations or outliers are noted in the tails usually)
+- The ECDF should follow the northwester axes of the plot
+
+From the results here there is clear basis for improvement!
 
 ## Forecast Formatting
 
@@ -802,7 +858,7 @@ The goal of probabilistic forecasting is to achieve a high degree of sharpness s
 
 How this is done and interpreted is an ongoing research topic, per [Hullman (2024)](https://statmodeling.stat.columbia.edu/2024/11/15/calibration-for-everyone-and-every-decision-maybe/)
 
-### CRPS: measures calibration and sharpness
+## CRPS: measures calibration and sharpness
 
 To address the problems of calibration and sharpness a proper scoring rule is used to summarize the density.  For the kind of forecasts being generated here a good choice of this is a *continuous rank probability score* or CRPS.
 
@@ -851,10 +907,9 @@ where $w_k$ are weights set by the forecaster (typically, $w_k = \frac{1}{k}$).
 
 ## CRPS for `cm` models
 
-This shows how to use the basic `scoringutils` package functions to score the list of forecasts constructed in `count.out`.
+This shows how to use the `scoringutils` package functions to score the list of forecasts constructed in `count.out`.
 
 ```{r scoringdemo, echo=TRUE, message=FALSE, warning=FALSE}
-library(scoringutils)
 
 # Get the mean CRPS values across the country-year-draws
 check.crps <- lapply(lapply(count.out, 
@@ -876,13 +931,10 @@ system.time(scored.out <- score(as_forecast_sample(all.stacked,
 
 # Get summaries by correct units of evaluation
 library(magrittr)
-library(dplyr)
-
 crps <- scored.out %>% 
-  summarise_scores(by=c("model", "month_id"), na.rm=TRUE) %>%
-  select(c("model", "month_id", "crps"))
+  summarise_scores(by=c("model", "month_id"), na.rm=TRUE) 
 
-print(crps)
+print(crps[,c(1,2,5)])
 ```
 
 So this now shows the model-specific CRPS metrics for the time periods.
@@ -892,10 +944,9 @@ Additional examples deploying CRPS metrics across models are [here](https://gith
 Another metric example would be across the countries `se_mean` which is the RMSE:
 ```{r rmse, echo=TRUE}
 rmse <- scored.out %>% 
-  summarise_scores(by=c("model", "isoab"), na.rm=TRUE) %>%
-  select(c("model", "isoab", "se_mean"))
+  summarise_scores(by=c("model", "isoab"), na.rm=TRUE) 
 
-head(rmse)
+head(rmse[,c(1,2,12)])
 str(rmse)
 ```
 
@@ -907,7 +958,7 @@ Here is how to convert the scores from the `scoringutils` functions to a time se
 
 ```{r crps_ts, echo=TRUE, fig.keep='last', warning=FALSE, fig.align='center', fig.width=6, fig.height=4, fig.cap="CRPS Time Series. Lower scores are better!"}
 # Make a time series of the CRPS for each model / forecast period
-crps.ts <- scored.out %>% select(c("model", "month_id", "crps")) %>% arrange(model, month_id)
+crps.ts <- scored.out %>% arrange(model, month_id)
 
 # Arrange the time series and add names
 tmp <- crps.ts %>% summarise_scores(by=c("model", "month_id"))
@@ -927,6 +978,10 @@ legend("topleft", legend = mnames, col=1:length(mnames),
 
 ```
 From this one can see the relative performance of each of the models (distributions) over the test horizon of 2024. The Poisson model is initially worst, followed by the training data mean.  Note how a forecast model of "all zeros" is actually often the best performing one here. 
+
+## Forecasts and metrics on a country basis
+
+TBD
 
 # Additional forecast metrics 
 
@@ -980,8 +1035,7 @@ For implementation, see [@ANZEL2023107843] and [@openair].
 This uses the `openair` package implementation of the Taylor diagram.
 
 ```{r taylordemo, echo=TRUE, fig.keep='last', warning=FALSE, fig.align='center', fig.width=6, fig.height=4, fig.cap="Taylor Diagrams of 2024 `cm` forecast performance"}
-#### Taylor diagram ####
-library(openair)
+
 
 # Normalized Taylor diagrams
 par(mfrow=c(1,2))
@@ -1011,7 +1065,7 @@ Ratio of the model prediction standard deviations to the observed. The idea is f
 #### SD Ratios ####
 model.ses <- scored.out %>%
   summarise_scores(by = c("model", "month_id"), na.rm=TRUE) %>%
-  group_by(model) %>% select(model, se_mean, month_id) %>% arrange(model, month_id)
+  group_by(model) %>% arrange(model, month_id)
 
 # Organize and label columns with model names -->
 mdls <- unique(model.ses$model) 
@@ -1060,13 +1114,12 @@ print(sd.model/sd.obs, digits=3)
 
 <!-- ``` -->
 
-## Benchmarks comparisons via skill scores
+## Skill scores
 
 One result needed to score the forecasts are *skill scores*.  Skill scores are a normalization of model scores to some pre-chosen baseline.  So the standard deviation time series in the previous section are a verison of a skill score.  
 
 The `scoringutils` package can automatically generate skill scores across the forecast results.
 
-## Skill scores
 To get skill scores for say CRPS and RMSE metrics one uses:
 
 ```{r skill_scores, echo=TRUE}
@@ -1075,6 +1128,8 @@ get_pairwise_comparisons(scored.out)
 get_pairwise_comparisons(scored.out, metric = "crps")
 
 ```
+
+NOte these are the "relative" or ratio comparisons of the various scores presented earlier.  So the function mainly handles doing the comparison smartly. 
 
 The same by `month_id`:
 ```{r skill_scores_paired, echo=TRUE}
@@ -1088,20 +1143,183 @@ get_pairwise_comparisons(scored.out, by="month_id")
 
 <!-- - Comparisons to other VIEWS baseline models are addressed [here](https://github.com/PTB-OEDA/VIEWS2-DensityForecasts/blob/main/baseline-views-forecasts.R) -->
 
-# `cm` models with covariates
+# Exercises: `cm` models with covariates
 
-Add models in this section with covariates.
+The goal at this point is to begin to explore what happens when various predictor variables are added to the models for the `cm` data.  Since prior work has shown that the [negative binomial and Tweedie models work well](https://viewsforecasting.org/research/prediction-challenge-2023/leaderboard/)
 
-## Climate
+## Exercise 0: Baseline Tweedie model 
 
-Replicate something from above with say rainfall or some other climate measure.
+Here we return to the original dataset which was the `cm` object (not the `dfs` subset used earlier).
 
-## Demography
+We begin by defining new train-test splits, then building a basic Tweedie regression model with
 
-Use a demographic covariate in a model like log(IMR).
+1.  Fixed effects for the countries
+2.  Simple dummy variables for the years
 
-## Civil-Military Expenditures
+To make the data for this exercise more usable, add the `country_id` and `month_id` variables to the original data (before we only did it for the subsets by variable and time).
 
-Include a civ-mil expenditure covariate.
+```{r exercise-data, echo=TRUE, cache=TRUE}
+cm1 <- merge(cm, countries, 
+             by.x = "country_id", by.y="id")
+
+# Merge on the time periods info
+cm1 <- merge(cm1, month_ids[,2:4],
+             by.x = "month_id", by.y="month_id")
+
+# Make factors for countries and years
+cm1$country_factor <- as.factor(cm1$isoab)
+cm1$year_factor <- as.factor(cm1$Year)
+
+```
+
+In what follows the training data are much bigger than what was done above.  
+
+The splits in the data are
+
+- *Training*: 1990--2022
+- *Test*: 2023--2024
+
+```{r baseline-data, echo=TRUE, cache=TRUE}
+cm.train <- cm1[cm1$Year < 2023,]
+cm.test <- cm1[cm1$Year > 2022,]
+```
+
+A baseline Tweedie count model then looks like this for the training data (this will take much longer than what we ran above since it use a much bigger training dataset):
+
+```{r baseline-tweedie, echo=TRUE, warning=FALSE, cache=TRUE}
+# Estimate the Tweedie parameter - or not.
+param.tw <- tweedie.profile(ged_sb ~ country_factor + year_factor, 
+                            xi.vec=seq(1.45, 1.775, by=0.075),
+                            data = cm.train,
+                            do.plot=FALSE,
+                            control=list(maxit=20),
+                            method="series",
+                            verbose=FALSE)
+
+tw <- glm(ged_sb ~ country_factor + year_factor, 
+          data = cm.train,
+          family=tweedie(var.power=param.tw$xi.max, link.power=0),
+          control=list(maxit=50))
+```
+
+Look quickly at the coefficient plots for the fixed effects for the year dummy variables:
+
+```{r coef.plot, echo=TRUE, fig.keep='last'}
+coefplot::coefplot(tw, coefficients=paste("year_factor", 1990:2022, sep=""),
+                   shorten=TRUE)
+
+```
+
+Now we use the fitted model to generate predictions over the test data using the `cm.test` object in the predictions.
+
+```{r baseline-prediction, echo=TRUE}
+# Predictions
+# Set the factor values for factor_year to be the same as 2022!
+cm.test$year_factor <- as.factor(2022)
+p.tw <- predict(tw, newdata=cm.test, type = "response")
+  
+# Now simulate the forecasts for each test period
+# Recall: N was set above
+tw.sample <- t(sapply(1:length(p.tw), function(i) {rtweedie(N, 
+                                                            xi=param.tw$xi.max,
+                                                 mu=p.tw[i], phi=1) }))
+
+```
+
+Repeat the forecast formatting like earlier:
+
+```{r reformat, echo=TRUE}
+
+# Add case idtenifiers to the forecasts for the PoissonTweedie models
+forecast.TW <- cbind(cm.test[,c(1,2)], tw.sample) # Tweedie ones
+
+# Now, reshape these into a `long` format where 
+# rows are a cm forecast by model
+
+TW.stacked <- reshape(forecast.TW, 
+                      direction = "long",
+                      varying = list(names(forecast.TW)[3:(N+2)]),
+                      v.names = "predicted",
+                      idvar = c("month_id", "country_id"),
+                      timevar = "sample_id",
+                      times = 1:N)
+TW.stacked$model <- "Tweedie2"
+
+# Cleanup
+rm(forecast.TW)
+
+# Now merge forecasts with the test data
+keep.variables <- c("month_id", "country_id", "ged_sb", "isoname", "isoab", "isonum")
+
+TW.stacked <- merge(TW.stacked, 
+                    subset(cm.test, select = keep.variables),
+                    by.x = c("month_id", "country_id"),
+                    by.y = c("month_id", "country_id"))
+
+# Make some other baseline forecasts
+# All zeros
+Zero.stacked <- TW.stacked
+Zero.stacked$predicted <- 0
+Zero.stacked$model <- "Zeros"
+
+# Common Poisson mean across the training data
+Mean.stacked <- TW.stacked
+Mean.stacked$predicted <- rpois(nrow(Mean.stacked), mean(cm.test$ged_sb))
+Mean.stacked$model <- "Training Mean"
+
+# Some reorg for below: here we stack the forecasts into a data.frame
+allnew.stacked <- rbind(TW.stacked, Zero.stacked, Mean.stacked)
+
+# Rename the outcome as `observed` since this is expected in code below.
+allnew.stacked$observed <- allnew.stacked$ged_sb
+
+rm(TW.stacked, Zero.stacked, Mean.stacked)
+
+```
+
+Then we can score these predictions:
+
+```{r score_example, echo=TRUE}
+Tweedie.scored <- score(as_forecast_sample(allnew.stacked,
+                        forecast_unit = c("model", "month_id", "isoab")))
+
+get_pairwise_comparisons(Tweedie.scored, metric = "crps")
+
+Tweedie.scored %>% summarise_scores(by = "model")
+```
+
+It is really hard to beat `Zeros`!
+
+## Exercise 1: Climate variables
+
+1.  Extend the baseline model in the previous section with say rainfall or some other climate measures.
+
+2.  Then score the model against the baselines in the previous section.
+
+## Exercise 2: Demography
+
+1.   Use a demographic covariate in a model like log(IMR).
+
+2.  Then score the model against the baselines in the previous section.
+
+## Exercise 3: Civil-Military Expenditures
+
+1.  Use measures of military expenditures or fiscal pressures as predictors.
+
+2.  Then score the model against the baselines in the previous section.
+
+## Exercise 4: Extract out predictions by region or country
+
+This is a quick way to see how scores can be extracted by country for a time period:
+
+```{r extract_scores}
+Tweedie.scored %>% filter(isoab=="LBY") %>% summarise_scores(by="month_id")
+
+```
+
+
+1.  Visualize the above.
+
+2.  Plot the forecast densities over the training and test periods for a case like this.
 
 # References

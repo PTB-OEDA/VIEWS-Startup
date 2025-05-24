@@ -2,10 +2,11 @@ VIEWS Data Setup and Modeling Demo
 ================
 Patrick T. Brandt
 
-May 22, 2025
+May 23, 2025
 
 - [Introduction](#introduction)
 - [Country-Month Data setup](#country-month-data-setup)
+- [Package loads](#package-loads)
   - [Reading in data](#reading-in-data)
   - [Basic data manipulation for
     country-months](#basic-data-manipulation-for-country-months)
@@ -32,23 +33,31 @@ May 22, 2025
   - [Scoring with simple metrics](#scoring-with-simple-metrics)
   - [Forecast Formatting](#forecast-formatting)
   - [Calibration & Sharpness](#calibration--sharpness)
+  - [CRPS: measures calibration and
+    sharpness](#crps-measures-calibration-and-sharpness)
   - [CRPS formula](#crps-formula)
   - [A CRPS Visual](#a-crps-visual)
   - [CRPS in practice](#crps-in-practice)
   - [CRPS for `cm` models](#crps-for-cm-models)
   - [Metrics over time horizons](#metrics-over-time-horizons)
+  - [Forecasts and metrics on a country
+    basis](#forecasts-and-metrics-on-a-country-basis)
 - [Additional forecast metrics](#additional-forecast-metrics)
   - [Taylor Diagrams](#taylor-diagrams)
   - [Taylor Diagram math](#taylor-diagram-math)
   - [Taylor Diagram example code](#taylor-diagram-example-code)
   - [Standard Deviation Ratios](#standard-deviation-ratios)
-  - [Benchmarks comparisons via skill
-    scores](#benchmarks-comparisons-via-skill-scores)
   - [Skill scores](#skill-scores)
-- [`cm` models with covariates](#cm-models-with-covariates)
-  - [Climate](#climate)
-  - [Demography](#demography)
-  - [Civil-Military Expenditures](#civil-military-expenditures)
+- [Exercises: `cm` models with
+  covariates](#exercises-cm-models-with-covariates)
+  - [Exercise 0: Baseline Tweedie
+    model](#exercise-0-baseline-tweedie-model)
+  - [Exercise 1: Climate variables](#exercise-1-climate-variables)
+  - [Exercise 2: Demography](#exercise-2-demography)
+  - [Exercise 3: Civil-Military
+    Expenditures](#exercise-3-civil-military-expenditures)
+  - [Exercise 4: Extract out predictions by region or
+    country](#exercise-4-extract-out-predictions-by-region-or-country)
 - [References](#references)
 
 # Introduction
@@ -64,15 +73,40 @@ Alternative version would be direct calls to the
 Here begin with setting up the training data as provided by
 [ViEWS](https://viewsforecasting.org/prediction-competition-2/). This
 takes the data as given from ViEWS and reads it into several data frames
-and some subsets.
+and some subsets. The next few steps do this initially so that one gets
+all of the necessary data in one place at the beginning of the analysis
+that follow.
+
+# Package loads
+
+This section handles loading all packages then used below. This will
+able be able to allow R Studio to handle in one section any installs /
+loads / libraries needed below.
+
+``` r
+rm(list=ls())  # Clean start, I know...
+library(arrow)
+library(plotly)
+library(tidyr)
+library(ggplot2)
+library(statmod)
+library(tweedie)
+library(MASS)
+library(pscl)
+library(zoo)
+library(scoringutils)
+library(magrittr)
+#### Taylor diagram ####
+library(openair)
+```
 
 ## Reading in data
 
 Now these are compressed, which means there are only data for all
 observations that are observed.
 
-*If you run your own version of this, you will likely need to change the
-paths to the input files.* Here are links for the
+*If you run your own local version of this, you will likely need to
+change the paths to the input files.* Here are links for the
 [codebooks](https://viewsforecasting.org/wp-content/uploads/cm_features_competition.pdf)
 or
 [here](https://www.dropbox.com/scl/fo/rkj4ttawoz9pv6x35r9cq/ACNAhhWCn6wCJvSv8ZeyMu4/cm_level_data?dl=0&preview=ideas_fastforward_2025_cm_features.pdf&rlkey=44eg0kk4w8yh8tm1f53vvpzps&subfolder_nav_tracking=1)
@@ -88,8 +122,6 @@ destfile <- "cm_data_121_542.parquet"
 # DL with curl
 curl::curl_download(url = dl_link, destfile = destfile)
 
-# For the parquet files load the `arrow` package
-library(arrow)
 
 # This is the main data file
 cm <- read_parquet("cm_data_121_542.parquet")
@@ -146,6 +178,66 @@ dfs <- merge(dfs, month_ids[,2:4],
 
 # Clean up
 rm(df1)
+```
+
+One can now subset or select from an object like `dfs` in several ways:
+
+``` r
+# Pull out rows for Libya
+Libya <- dfs[dfs$isoab=="LBY",]
+str(Libya)
+```
+
+    ## 'data.frame':    420 obs. of  18 variables:
+    ##  $ month_id      : int  121 122 123 124 125 126 127 128 129 130 ...
+    ##  $ country_id    : int  213 213 213 213 213 213 213 213 213 213 ...
+    ##  $ gleditsch_ward: int  620 620 620 620 620 620 620 620 620 620 ...
+    ##  $ ged_sb        : int  0 0 0 0 0 0 0 0 0 0 ...
+    ##  $ ged_ns        : int  0 0 0 0 0 0 0 0 0 0 ...
+    ##  $ ged_os        : int  0 0 0 0 0 0 0 0 0 0 ...
+    ##  $ acled_sb      : num  0 0 0 0 0 0 0 0 0 0 ...
+    ##  $ acled_sb_count: num  0 0 0 0 0 0 0 0 0 0 ...
+    ##  $ acled_os      : num  8 8 8 8 8 8 8 8 8 8 ...
+    ##  $ name          : chr  "Libya" "Libya" "Libya" "Libya" ...
+    ##  $ gwcode        : int  620 620 620 620 620 620 620 620 620 620 ...
+    ##  $ isoname       : chr  "Libyan Arab Jamahiriya" "Libyan Arab Jamahiriya" "Libyan Arab Jamahiriya" "Libyan Arab Jamahiriya" ...
+    ##  $ isoab         : chr  "LBY" "LBY" "LBY" "LBY" ...
+    ##  $ isonum        : int  434 434 434 434 434 434 434 434 434 434 ...
+    ##  $ in_africa     : int  1 1 1 1 1 1 1 1 1 1 ...
+    ##  $ in_middle_east: int  0 0 0 0 0 0 0 0 0 0 ...
+    ##  $ Month         : int  1 2 3 4 5 6 7 8 9 10 ...
+    ##  $ Year          : int  1990 1990 1990 1990 1990 1990 1990 1990 1990 1990 ...
+
+``` r
+# All data since 2022
+post21 <- dfs[dfs$Year>2021,]
+
+str(post21)
+```
+
+    ## 'data.frame':    6876 obs. of  18 variables:
+    ##  $ month_id      : int  505 505 505 505 505 505 505 505 505 505 ...
+    ##  $ country_id    : int  77 53 37 147 24 81 32 132 223 92 ...
+    ##  $ gleditsch_ward: int  970 451 395 811 41 461 91 696 750 372 ...
+    ##  $ ged_sb        : int  0 0 0 0 0 0 0 3 35 0 ...
+    ##  $ ged_ns        : int  0 0 0 0 0 0 0 0 1 0 ...
+    ##  $ ged_os        : int  0 0 0 0 0 0 0 0 7 0 ...
+    ##  $ acled_sb      : num  0 0 0 0 0 0 0 0 24 0 ...
+    ##  $ acled_sb_count: num  0 0 0 0 0 0 0 5 17 0 ...
+    ##  $ acled_os      : num  0 0 0 0 21 0 40 3 34 0 ...
+    ##  $ name          : chr  "Kiribati" "Sierra Leone" "Iceland" "Cambodia" ...
+    ##  $ gwcode        : int  970 451 395 811 41 461 91 696 750 372 ...
+    ##  $ isoname       : chr  "Kiribati" "Sierra Leone" "Iceland" "Cambodia" ...
+    ##  $ isoab         : chr  "KIR" "SLE" "ISL" "KHM" ...
+    ##  $ isonum        : int  296 694 352 116 332 768 340 784 356 268 ...
+    ##  $ in_africa     : int  0 1 0 0 0 1 0 0 0 0 ...
+    ##  $ in_middle_east: int  0 0 0 0 0 0 0 1 0 0 ...
+    ##  $ Month         : int  1 1 1 1 1 1 1 1 1 1 ...
+    ##  $ Year          : int  2022 2022 2022 2022 2022 2022 2022 2022 2022 2022 ...
+
+``` r
+# Clean ip
+rm(post21)
 ```
 
 # Basic Time Series Plots of all the SB killings data
@@ -398,30 +490,6 @@ Finally an interactive plot of the variation over months can be
 constructed as follows:
 
 ``` r
-library(plotly)
-```
-
-    ## Loading required package: ggplot2
-
-    ## 
-    ## Attaching package: 'plotly'
-
-    ## The following object is masked from 'package:ggplot2':
-    ## 
-    ##     last_plot
-
-    ## The following object is masked from 'package:stats':
-    ## 
-    ##     filter
-
-    ## The following object is masked from 'package:graphics':
-    ## 
-    ##     layout
-
-``` r
-library(tidyr)
-library(ggplot2)
-
 x <- roll.ged.sb[,2]
 dmn <- list(month.abb, unique(floor(time(x))))
 # convert to data frame by month, to make data retrieval easier
@@ -488,20 +556,22 @@ V(Y) &= \sigma^2 \mu^p
 ```
 
 This is given as $`Y`$ follows a Tweedie density with power $`p`$ of the
-form $`Y \sim TW_p(\mu, \sigma^2)`$:
+form $`Y \sim TW_p(\mu, \sigma^2)`$ and $`\theta`$ is the canonical
+paramter of the cumulant of the distribution:
 
 ``` math
 
-\Pr(Y|\mu, \sigma^2) = \int_A \exp\left( \frac{\theta \cdot z - \kappa_p(\theta)}{\sigma^2}\right) \nu_\lambda dz
+\Pr(Y \in A) = \int_A \exp\left( \frac{\theta \cdot z - \kappa_p(\theta)}{\sigma^2}\right) \nu_\lambda dz
 ```
-where
+where the cumulant $`\kappa()`$ of the distribution is a function of
+$`\theta`$. This is a piecewise function of the form
 ``` math
 
 \kappa_p(\theta)=
 \begin{cases}
   \frac{\alpha-1}{\alpha} \left(\frac{\theta}{\alpha-1}\right)^\alpha,  & \text{for }p\neq 1,2\\
   -\log(-\theta), & \text{for }p=2\\
-  e^\theta, & \text{for }p=1
+  e^\theta, & \text{for }p=1.
 \end{cases}
 ```
 Typically note the mapping that $`\alpha = \frac{p-2}{p-1}`$ and
@@ -509,8 +579,18 @@ $`p = \frac{\alpha-2}{\alpha-1}`$. Numerical approximation must be used
 for evaluation and simulation (See P. K. Dunn and Smyth 2005, 2008; and
 P. Dunn 2017).
 
+The variance function for the ED models is constructed from the
+canonical mapping of the derivatives of the cumulant for $`\kappa()`$ to
+the mean $`\mu`$. IN this case these are
+
+``` math
+
+\tau(\theta) = \kappa^\prime(\theta) = \mu
+```
+
 When $`p`$ takes on certain values, the Tweedie reduces to other known
 exponential distributions (See Sections 4.1 and 4.2 Jorgensen 1997).
+Additional details can be found in (Chapter 5 Jorgensen 1997).
 
 Specifically these are
 
@@ -564,9 +644,6 @@ $`{\mu,\phi,p}`$. THe following figure gives an illustration for
 different choices.
 
 ``` r
-library(statmod)
-library(tweedie)
-
 par(mfcol=c(5,5), oma = c(4,1,1,1), mar=c(4,3,1,1))
 for(mu in seq(0.5,2,0.5)) {
 for(phi in c(seq(1,4,1),10)) # dispersion values loop
@@ -618,10 +695,18 @@ This is a stability check on the data: can we even really generalize an
 ED like target density? Do the parameters of the Tweedie fitted model to
 the data change or stay the same over time (months)?
 
-``` r
-library(tweedie)
-library(statmod)
+The reason ask this is that the dynamic representation of the counts and
+their stability are directly related to the distributions that best fit
+them. This point is made in papers by (Brandt et al. 2000) and (Brandt
+and Williams 2001) and is a reason to suspect that Poisson, negative
+binomial and even some zero inflated models may be incorrect for these
+kinds of data.
 
+The following function and parallel code (it will use up to 8 CPU cores
+on your machine as written) estimates a Tweedie model for each monthly
+dataset from 1990-2024.
+
+``` r
 oneperiod.fit <- function(y, xi.vec=seq(1.45, 1.775, by=0.005))
 {
   out <- tweedie.profile(y~1, xi.vec=xi.vec, 
@@ -689,7 +774,7 @@ system.time(all.tw <- clusterApplyLB(cl, sbdata, oneperiod.fit))
 ```
 
     ##    user  system elapsed 
-    ##   0.103   0.040  57.499
+    ##   0.101   0.040  52.919
 
 ``` r
 stopCluster(cl)
@@ -701,6 +786,15 @@ Plot summaries of the key parameters of the Tweedie models for each time
 period (month). These examine the probabilty that there are zeros and
 how well one can fit the baseline variance of the data using a count
 model.
+
+The goals in looking at this are
+
+1.  whether there Tweedie parameters indicate the presence of a compound
+    Poisson or dependent count distribution – is $`p \in (1,2)`$.
+
+2.  changes in the $`Pr(\textrm{ged_sb}\,=\,0)`$ over time.
+
+3.  variance changes that are large or small across time.
 
 Begin by extracting out the fitted model objects from the Tweedie models
 fit earlier.
@@ -774,6 +868,8 @@ baseline frequency of zero.
 
 </div>
 
+The Tweedie model captures this important property of the data.
+
 # Simple prediction models
 
 This section shows how to set up some simple baseline prediction models
@@ -786,8 +882,8 @@ split the data into training-test splits and fit the following models:
 
 - P = Poisson
 - NB = Negbin
-- ZIP = ZI Poisson
-- ZINB = ZI Negbin
+- ZIP = Zero Inflated Poisson
+- ZINB = Zero Inflated Negbin
 - TW = Tweedie
 
 A single unit-specific dummy variable is includes to address country
@@ -799,13 +895,6 @@ is a set of `N` simulated draws from the forecast density for each model
 and outcome to be predicted in the test data.
 
 ``` r
-# Load needed libraries
-library(statmod)
-library(tweedie)
-library(MASS)
-library(pscl)
-library(zoo)
-
 set.seed(145)
 
 
@@ -1222,7 +1311,7 @@ How this is done and interpreted is an ongoing research topic, per
 [Hullman
 (2024)](https://statmodeling.stat.columbia.edu/2024/11/15/calibration-for-everyone-and-every-decision-maybe/)
 
-### CRPS: measures calibration and sharpness
+## CRPS: measures calibration and sharpness
 
 To address the problems of calibration and sharpness a proper scoring
 rule is used to summarize the density. For the kind of forecasts being
@@ -1298,12 +1387,10 @@ grey areas described above.
 
 ## CRPS for `cm` models
 
-This shows how to use the basic `scoringutils` package functions to
-score the list of forecasts constructed in `count.out`.
+This shows how to use the `scoringutils` package functions to score the
+list of forecasts constructed in `count.out`.
 
 ``` r
-library(scoringutils)
-
 # Get the mean CRPS values across the country-year-draws
 check.crps <- lapply(lapply(count.out, 
                                   crps_sample, 
@@ -1329,18 +1416,15 @@ system.time(scored.out <- score(as_forecast_sample(all.stacked,
 ```
 
     ##    user  system elapsed 
-    ##   7.656   0.362   4.008
+    ##   6.901   0.936   4.113
 
 ``` r
 # Get summaries by correct units of evaluation
 library(magrittr)
-library(dplyr)
-
 crps <- scored.out %>% 
-  summarise_scores(by=c("model", "month_id"), na.rm=TRUE) %>%
-  select(c("model", "month_id", "crps"))
+  summarise_scores(by=c("model", "month_id"), na.rm=TRUE) 
 
-print(crps)
+print(crps[,c(1,2,5)])
 ```
 
     ##             model month_id     crps
@@ -1405,10 +1489,9 @@ the RMSE:
 
 ``` r
 rmse <- scored.out %>% 
-  summarise_scores(by=c("model", "isoab"), na.rm=TRUE) %>%
-  select(c("model", "isoab", "se_mean"))
+  summarise_scores(by=c("model", "isoab"), na.rm=TRUE) 
 
-head(rmse)
+head(rmse[,c(1,2,12)])
 ```
 
     ##      model  isoab  se_mean
@@ -1424,12 +1507,21 @@ head(rmse)
 str(rmse)
 ```
 
-    ## Classes 'scores', 'data.table' and 'data.frame': 764 obs. of  3 variables:
-    ##  $ model  : chr  "Poisson" "Poisson" "Poisson" "Poisson" ...
-    ##  $ isoab  : chr  "GUY" "CHL" "HUN" "POL" ...
-    ##  $ se_mean: num  0 0.75 0 0.00198 0 ...
+    ## Classes 'scores', 'data.table' and 'data.frame': 764 obs. of  12 variables:
+    ##  $ model          : chr  "Poisson" "Poisson" "Poisson" "Poisson" ...
+    ##  $ isoab          : chr  "GUY" "CHL" "HUN" "POL" ...
+    ##  $ bias           : num  -1 -1 -1 -0.923 -1 ...
+    ##  $ dss            : num  NaN NaN NaN -3.25 NaN ...
+    ##  $ crps           : num  0 0.25 0 0.00171 0 ...
+    ##  $ overprediction : num  0 0 0 0 0 0 0 0 0 0 ...
+    ##  $ underprediction: num  0 0.25 0 0 0 0 0 0 0 0 ...
+    ##  $ dispersion     : num  0 0 0 0.00171 0 ...
+    ##  $ log_score      : num  -Inf NaN -Inf -Inf -Inf ...
+    ##  $ mad            : num  0 0 0 0 0 0 0 0 0 0 ...
+    ##  $ ae_median      : num  0 0.25 0 0 0 0 0 0 0 0 ...
+    ##  $ se_mean        : num  0 0.75 0 0.00198 0 ...
+    ##  - attr(*, ".internal.selfref")=<externalptr> 
     ##  - attr(*, "metrics")= chr [1:10] "bias" "dss" "crps" "overprediction" ...
-    ##  - attr(*, ".internal.selfref")=<externalptr>
 
 This gives back the `rmse` for each country over the time periods for
 each of the models. (The illustration only displays the first 6 values.)
@@ -1441,7 +1533,7 @@ time series:
 
 ``` r
 # Make a time series of the CRPS for each model / forecast period
-crps.ts <- scored.out %>% select(c("model", "month_id", "crps")) %>% arrange(model, month_id)
+crps.ts <- scored.out %>% arrange(model, month_id)
 
 # Arrange the time series and add names
 tmp <- crps.ts %>% summarise_scores(by=c("model", "month_id"))
@@ -1474,6 +1566,10 @@ From this one can see the relative performance of each of the models
 (distributions) over the test horizon of 2024. The Poisson model is
 initially worst, followed by the training data mean. Note how a forecast
 model of “all zeros” is actually often the best performing one here.
+
+## Forecasts and metrics on a country basis
+
+TBD
 
 # Additional forecast metrics
 
@@ -1545,9 +1641,6 @@ and Ropkins 2012).
 This uses the `openair` package implementation of the Taylor diagram.
 
 ``` r
-#### Taylor diagram ####
-library(openair)
-
 # Normalized Taylor diagrams
 par(mfrow=c(1,2))
 TaylorDiagram(all.stacked,
@@ -1587,7 +1680,7 @@ standard deviations:
 #### SD Ratios ####
 model.ses <- scored.out %>%
   summarise_scores(by = c("model", "month_id"), na.rm=TRUE) %>%
-  group_by(model) %>% select(model, se_mean, month_id) %>% arrange(model, month_id)
+  group_by(model) %>% arrange(model, month_id)
 
 # Organize and label columns with model names -->
 mdls <- unique(model.ses$model) 
@@ -1684,7 +1777,7 @@ print(sd.model/sd.obs, digits=3)
 
 <!-- ``` -->
 
-## Benchmarks comparisons via skill scores
+## Skill scores
 
 One result needed to score the forecasts are *skill scores*. Skill
 scores are a normalization of model scores to some pre-chosen baseline.
@@ -1693,8 +1786,6 @@ verison of a skill score.
 
 The `scoringutils` package can automatically generate skill scores
 across the forecast results.
-
-## Skill scores
 
 To get skill scores for say CRPS and RMSE metrics one uses:
 
@@ -1780,6 +1871,10 @@ get_pairwise_comparisons(scored.out, metric = "crps")
     ## 15:           0.7106865
     ## 16:           0.7106865
 
+NOte these are the “relative” or ratio comparisons of the various scores
+presented earlier. So the function mainly handles doing the comparison
+smartly.
+
 The same by `month_id`:
 
 ``` r
@@ -1819,22 +1914,291 @@ get_pairwise_comparisons(scored.out, by="month_id")
 
 <!-- - Comparisons to other VIEWS baseline models are addressed [here](https://github.com/PTB-OEDA/VIEWS2-DensityForecasts/blob/main/baseline-views-forecasts.R) -->
 
-# `cm` models with covariates
+# Exercises: `cm` models with covariates
 
-Add models in this section with covariates.
+The goal at this point is to begin to explore what happens when various
+predictor variables are added to the models for the `cm` data. Since
+prior work has shown that the [negative binomial and Tweedie models work
+well](https://viewsforecasting.org/research/prediction-challenge-2023/leaderboard/)
 
-## Climate
+## Exercise 0: Baseline Tweedie model
 
-Replicate something from above with say rainfall or some other climate
-measure.
+Here we return to the original dataset which was the `cm` object (not
+the `dfs` subset used earlier).
 
-## Demography
+We begin by defining new train-test splits, then building a basic
+Tweedie regression model with
 
-Use a demographic covariate in a model like log(IMR).
+1.  Fixed effects for the countries
+2.  Simple dummy variables for the years
 
-## Civil-Military Expenditures
+To make the data for this exercise more usable, add the `country_id` and
+`month_id` variables to the original data (before we only did it for the
+subsets by variable and time).
 
-Include a civ-mil expenditure covariate.
+``` r
+cm1 <- merge(cm, countries, 
+             by.x = "country_id", by.y="id")
+
+# Merge on the time periods info
+cm1 <- merge(cm1, month_ids[,2:4],
+             by.x = "month_id", by.y="month_id")
+
+# Make factors for countries and years
+cm1$country_factor <- as.factor(cm1$isoab)
+cm1$year_factor <- as.factor(cm1$Year)
+```
+
+In what follows the training data are much bigger than what was done
+above.
+
+The splits in the data are
+
+- *Training*: 1990–2022
+- *Test*: 2023–2024
+
+``` r
+cm.train <- cm1[cm1$Year < 2023,]
+cm.test <- cm1[cm1$Year > 2022,]
+```
+
+A baseline Tweedie count model then looks like this for the training
+data (this will take much longer than what we ran above since it use a
+much bigger training dataset):
+
+``` r
+# Estimate the Tweedie parameter - or not.
+param.tw <- tweedie.profile(ged_sb ~ country_factor + year_factor, 
+                            xi.vec=seq(1.45, 1.775, by=0.075),
+                            data = cm.train,
+                            do.plot=FALSE,
+                            control=list(maxit=20),
+                            method="series",
+                            verbose=FALSE)
+```
+
+    ## 1.45 1.525 1.6 1.675 1.75 
+    ## .....Done.
+
+``` r
+tw <- glm(ged_sb ~ country_factor + year_factor, 
+          data = cm.train,
+          family=tweedie(var.power=param.tw$xi.max, link.power=0),
+          control=list(maxit=50))
+```
+
+Look quickly at the coefficient plots for the fixed effects for the year
+dummy variables:
+
+``` r
+coefplot::coefplot(tw, coefficients=paste("year_factor", 1990:2022, sep=""),
+                   shorten=TRUE)
+```
+
+<img src="Brandt-VIEWS2-Demo_files/figure-gfm/coef.plot-1.png" style="display: block; margin: auto;" />
+
+Now we use the fitted model to generate predictions over the test data
+using the `cm.test` object in the predictions.
+
+``` r
+# Predictions
+# Set the factor values for factor_year to be the same as 2022!
+cm.test$year_factor <- as.factor(2022)
+p.tw <- predict(tw, newdata=cm.test, type = "response")
+  
+# Now simulate the forecasts for each test period
+# Recall: N was set above
+tw.sample <- t(sapply(1:length(p.tw), function(i) {rtweedie(N, 
+                                                            xi=param.tw$xi.max,
+                                                 mu=p.tw[i], phi=1) }))
+```
+
+Repeat the forecast formatting like earlier:
+
+``` r
+# Add case idtenifiers to the forecasts for the PoissonTweedie models
+forecast.TW <- cbind(cm.test[,c(1,2)], tw.sample) # Tweedie ones
+
+# Now, reshape these into a `long` format where 
+# rows are a cm forecast by model
+
+TW.stacked <- reshape(forecast.TW, 
+                      direction = "long",
+                      varying = list(names(forecast.TW)[3:(N+2)]),
+                      v.names = "predicted",
+                      idvar = c("month_id", "country_id"),
+                      timevar = "sample_id",
+                      times = 1:N)
+TW.stacked$model <- "Tweedie2"
+
+# Cleanup
+rm(forecast.TW)
+
+# Now merge forecasts with the test data
+keep.variables <- c("month_id", "country_id", "ged_sb", "isoname", "isoab", "isonum")
+
+TW.stacked <- merge(TW.stacked, 
+                    subset(cm.test, select = keep.variables),
+                    by.x = c("month_id", "country_id"),
+                    by.y = c("month_id", "country_id"))
+
+# Make some other baseline forecasts
+# All zeros
+Zero.stacked <- TW.stacked
+Zero.stacked$predicted <- 0
+Zero.stacked$model <- "Zeros"
+
+# Common Poisson mean across the training data
+Mean.stacked <- TW.stacked
+Mean.stacked$predicted <- rpois(nrow(Mean.stacked), mean(cm.test$ged_sb))
+Mean.stacked$model <- "Training Mean"
+
+# Some reorg for below: here we stack the forecasts into a data.frame
+allnew.stacked <- rbind(TW.stacked, Zero.stacked, Mean.stacked)
+
+# Rename the outcome as `observed` since this is expected in code below.
+allnew.stacked$observed <- allnew.stacked$ged_sb
+
+rm(TW.stacked, Zero.stacked, Mean.stacked)
+```
+
+Then we can score these predictions:
+
+``` r
+Tweedie.scored <- score(as_forecast_sample(allnew.stacked,
+                        forecast_unit = c("model", "month_id", "isoab")))
+
+get_pairwise_comparisons(Tweedie.scored, metric = "crps")
+```
+
+    ##            model compare_against mean_scores_ratio          pval      adj_pval
+    ##           <char>          <char>             <num>         <num>         <num>
+    ## 1: Training Mean           Zeros         1.7267343  0.000000e+00  0.000000e+00
+    ## 2: Training Mean        Tweedie2         0.8369576 1.553306e-258 3.106612e-258
+    ## 3: Training Mean   Training Mean         1.0000000  1.000000e+00  1.000000e+00
+    ## 4:      Tweedie2   Training Mean         1.1948037 1.553306e-258 3.106612e-258
+    ## 5:      Tweedie2           Zeros         2.0631086 5.283744e-149 5.283744e-149
+    ## 6:      Tweedie2        Tweedie2         1.0000000  1.000000e+00  1.000000e+00
+    ## 7:         Zeros   Training Mean         0.5791279  0.000000e+00  0.000000e+00
+    ## 8:         Zeros        Tweedie2         0.4847055 5.283744e-149 5.283744e-149
+    ## 9:         Zeros           Zeros         1.0000000  1.000000e+00  1.000000e+00
+    ##    crps_relative_skill
+    ##                  <num>
+    ## 1:            1.130602
+    ## 2:            1.130602
+    ## 3:            1.130602
+    ## 4:            1.350847
+    ## 5:            1.350847
+    ## 6:            1.350847
+    ## 7:            0.654763
+    ## 8:            0.654763
+    ## 9:            0.654763
+
+``` r
+Tweedie.scored %>% summarise_scores(by = "model")
+```
+
+    ##            model       bias      dss      crps overprediction underprediction
+    ##           <char>      <num>    <num>     <num>          <num>           <num>
+    ## 1:      Tweedie2 -0.1764965      NaN 100.78762       60.23771        35.44155
+    ## 2:         Zeros -1.0000000      NaN  48.85231        0.00000        48.85231
+    ## 3: Training Mean  0.8668194 4681.066  84.35496       38.96404        43.76476
+    ##    dispersion log_score      mad ae_median  se_mean
+    ##         <num>     <num>    <num>     <num>    <num>
+    ## 1:   5.108367       NaN 21.67007 111.19423 309077.0
+    ## 2:   0.000000       NaN  0.00000  48.85231 211621.1
+    ## 3:   1.626160       Inf  6.92915  88.09446 209250.6
+
+It is really hard to beat `Zeros`!
+
+## Exercise 1: Climate variables
+
+1.  Extend the baseline model in the previous section with say rainfall
+    or some other climate measures.
+
+2.  Then score the model against the baselines in the previous section.
+
+## Exercise 2: Demography
+
+1.  Use a demographic covariate in a model like log(IMR).
+
+2.  Then score the model against the baselines in the previous section.
+
+## Exercise 3: Civil-Military Expenditures
+
+1.  Use measures of military expenditures or fiscal pressures as
+    predictors.
+
+2.  Then score the model against the baselines in the previous section.
+
+## Exercise 4: Extract out predictions by region or country
+
+This is a quick way to see how scores can be extracted by country for a
+time period:
+
+``` r
+Tweedie.scored %>% filter(isoab=="LBY") %>% summarise_scores(by="month_id")
+```
+
+    ##     month_id      bias   dss     crps overprediction underprediction dispersion
+    ##        <int>     <num> <num>    <num>          <num>           <num>      <num>
+    ##  1:      517 0.3333333   NaN 40.13765       36.93953       0.0000000   3.198113
+    ##  2:      518 0.3333333   NaN 37.38537       33.77594       0.0000000   3.609429
+    ##  3:      519 0.3333333   NaN 37.79952       34.45709       0.0000000   3.342429
+    ##  4:      520 0.3333333   NaN 40.02552       36.95000       0.0000000   3.075518
+    ##  5:      521 0.3333333   NaN 36.91526       32.87343       0.6666667   3.375155
+    ##  6:      522 0.3333333   NaN 39.51646       36.49830       0.0000000   3.018161
+    ##  7:      523 0.3333333   NaN 39.93110       36.87901       0.0000000   3.052095
+    ##  8:      524 0.3333333   NaN 39.03566       36.10234       0.0000000   2.933327
+    ##  9:      525 0.3333333   NaN 38.80745       35.39124       0.0000000   3.416211
+    ## 10:      526 0.3333333   NaN 39.37991       35.73958       0.0000000   3.640326
+    ## 11:      527 0.3333333   NaN 39.13931       35.38116       0.0000000   3.758146
+    ## 12:      528 0.3333333   NaN 40.86927       37.34767       0.0000000   3.521599
+    ## 13:      529 0.3333333   NaN 40.00634       36.86657       0.0000000   3.139768
+    ## 14:      530 0.3333333   NaN 38.67916       35.39935       0.0000000   3.279808
+    ## 15:      531 0.3333333   NaN 39.02258       35.75389       0.0000000   3.268694
+    ## 16:      532 0.3333333   NaN 39.10828       34.94052       0.0000000   4.167761
+    ## 17:      533 0.3333333   NaN 38.09272       35.08507       0.0000000   3.007654
+    ## 18:      534 0.3333333   NaN 38.26085       34.54655       0.6666667   3.047633
+    ## 19:      535 0.3333333   NaN 38.91445       35.83953       0.0000000   3.074914
+    ## 20:      536 0.3333333   NaN 41.84692       38.69321       0.0000000   3.153713
+    ## 21:      537 0.3333333   NaN 38.92986       35.63328       0.0000000   3.296576
+    ## 22:      538 0.3333333   NaN 40.05741       36.73903       0.0000000   3.318384
+    ## 23:      539 0.3333333   NaN 41.07801       38.02255       0.0000000   3.055455
+    ## 24:      540 0.3333333   NaN 40.16807       36.80941       0.0000000   3.358655
+    ##     month_id      bias   dss     crps overprediction underprediction dispersion
+    ##     log_score      mad ae_median  se_mean
+    ##         <num>    <num>     <num>    <num>
+    ##  1:      -Inf 14.69185  46.36182 3702.680
+    ##  2:      -Inf 16.09615  44.16032 3406.163
+    ##  3:      -Inf 13.08622  43.91412 3492.689
+    ##  4:      -Inf 12.41875  45.30012 3809.544
+    ##  5:       Inf 15.21448  44.20727 3180.635
+    ##  6:      -Inf 12.42075  45.43637 3665.940
+    ##  7:      -Inf 12.71937  46.49224 3728.318
+    ##  8:      -Inf 11.44160  45.56638 3506.078
+    ##  9:      -Inf 14.88872  46.27177 3542.732
+    ## 10:      -Inf 14.23313  45.31093 3842.792
+    ## 11:      -Inf 16.67423  46.88797 3660.603
+    ## 12:      -Inf 13.97524  47.58902 4057.145
+    ## 13:      -Inf 13.60958  48.29894 3817.190
+    ## 14:      -Inf 13.12419  43.49773 3491.167
+    ## 15:      -Inf 14.07247  46.40045 3582.874
+    ## 16:      -Inf 16.82515  44.41763 3900.883
+    ## 17:      -Inf 12.04366  44.50230 3370.786
+    ## 18:       Inf 12.08767  44.19412 3375.209
+    ## 19:      -Inf 11.88133  46.22460 3622.965
+    ## 20:      -Inf 12.97519  48.03347 4053.674
+    ## 21:      -Inf 13.59210  45.06371 3751.203
+    ## 22:      -Inf 14.80610  46.42977 3762.372
+    ## 23:      -Inf 13.17344  48.16768 3807.271
+    ## 24:      -Inf 13.50964  45.85793 3722.760
+    ##     log_score      mad ae_median  se_mean
+
+1.  Visualize the above.
+
+2.  Plot the forecast densities over the training and test periods for a
+    case like this.
 
 # References
 
@@ -1847,6 +2211,23 @@ Anžel, Aleksandar, Dominik Heider, and Georges Hattab. 2023.
 “Interactive Polar Diagrams for Model Comparison.” *Computer Methods and
 Programs in Biomedicine* 242: 107843.
 https://doi.org/<https://doi.org/10.1016/j.cmpb.2023.107843>.
+
+</div>
+
+<div id="ref-Brandt_Williams_2001" class="csl-entry">
+
+Brandt, Patrick T., and John T. Williams. 2001. “A Linear Poisson
+Autoregressive Model: The Poisson AR(p) Model.” *Political Analysis* 9
+(2): 164–84. <https://doi.org/10.1093/oxfordjournals.pan.a004869>.
+
+</div>
+
+<div id="ref-BWFP2000" class="csl-entry">
+
+Brandt, Patrick T., John T. Williams, Benjamin O. Fordham, and Brain
+Pollins. 2000. “Dynamic Modeling for Persistent Event-Count Time
+Series.” *American Journal of Political Science* 44 (4): 823–43.
+<http://www.jstor.org/stable/2669284>.
 
 </div>
 
