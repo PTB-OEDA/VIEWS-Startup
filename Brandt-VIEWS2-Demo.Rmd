@@ -171,7 +171,7 @@ Note this gives us what we would expect:
 This summarizes and plots the GED state-based deaths series in `ged_sb`.  The goal in the next part is to 
 
 1.  extract the data by month
-2.  sumamrize the mean and standard deviation for each month
+2.  summarize the mean and standard deviation for each month
 3.  plot these monthly statistics as time series
 
 ```{r demoplots, echo=TRUE, cache=TRUE, fig.keep='all', fig.align='center', fig.height=4}
@@ -206,7 +206,7 @@ plot(roll.ged.sb, lwd=2, col=1:2, main="",
 
 # Distributional summaries
 
-Here we look at the main variable from GED, the state-based deaths in the `ged_sb` variable.  (This can be repeated later for the other target measures in the `dfs` object.). Here we compute the summarize the main quantiles from the 75th to the 99th:
+Here look at the main variable from UCDP GED, the state-based deaths in the `ged_sb` variable.  (This can be repeated later for the other target measures in the `dfs` object.). Here we compute the summarize the main quantiles from the 75th to the 99th:
 
 ```{r distrosums, echo=TRUE, warning=FALSE}
 sb_quantiles <- by(dfs$ged_sb, dfs$Year, quantile, 
@@ -214,7 +214,9 @@ sb_quantiles <- by(dfs$ged_sb, dfs$Year, quantile,
 
 print(sb_quantiles)
 ```
-Of note here is that the lower 75th to 85th percentile of the distribution is zeros in almost all of the training data.  In recent years this increases slightly.  But this is why baseline predictions of zero or only a recent mean and important for comparison
+Of note here is that the lower 75th to 85th percentile of the distribution is zeros in almost all of the training data.  In recent years this increases slightly.  But this is why baseline predictions of zero or only a recent mean are important for comparison.
+
+Below a time series plot of the same is explored.
 
 ## Some key time series summaries of variation
 
