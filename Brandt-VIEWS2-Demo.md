@@ -2,7 +2,7 @@ VIEWS Data Setup and Modeling Demo
 ================
 Patrick T. Brandt
 
-May 23, 2025
+May 26, 2025
 
 - [Introduction](#introduction)
 - [Country-Month Data setup](#country-month-data-setup)
@@ -102,10 +102,10 @@ library(openair)
 
 ## Reading in data
 
-Now these are compressed, which means there are only data for all
-observations that are observed.
+This section shows how to automatically download and read in the
+training data for the VIEWS `cm` to `R`.
 
-*If you run your own local version of this, you will likely need to
+*If you run your own local version of this, you may likely need to
 change the paths to the input files.* Here are links for the
 [codebooks](https://viewsforecasting.org/wp-content/uploads/cm_features_competition.pdf)
 or
@@ -113,23 +113,31 @@ or
 and [input
 files](https://www.dropbox.com/scl/fo/rkj4ttawoz9pv6x35r9cq/APSd_RJxvk-fpNAteD4J1iY?rlkey=44eg0kk4w8yh8tm1f53vvpzps&e=1&st=r0qv5cz1&dl=0).
 
+This does take some time initially. (Once you have these files locally
+you can bypass this section or alter this to run locally!)
+
 ``` r
-# CM level data: features and outcomes
+# CM level data: features and outcomes path
 dl_link <- "https://www.dropbox.com/scl/fo/rkj4ttawoz9pv6x35r9cq/ACi53p087OvQUke0pIg88pg/cm_level_data/cm_data_121_542.parquet?rlkey=44eg0kk4w8yh8tm1f53vvpzps&dl=1"
 
+# File name once downloaded
 destfile <- "cm_data_121_542.parquet"
 
 # DL with curl
 curl::curl_download(url = dl_link, destfile = destfile)
 
-
-# This is the main data file
+# This is the main data file being read into R
 cm <- read_parquet("cm_data_121_542.parquet")
+
+###
+## Repeat the above with the data for the country labels and the month ids
+##
 
 # Get the list of country names as well to add to the data
 # These are from the main VIEWS site
 dl_link2 <- "https://www.dropbox.com/scl/fo/rurpcmtpcquni5onoyuus/AGeR6dD-Ru-Emwn06HnKAE8/matching_tables?preview=countries.csv&rlkey=v1o4va647qrwc4la7m8i7cedk&subfolder_nav_tracking=1&st=goucd0hg&dl=1"
 
+# File name declared
 destfile2 <- "country.zip"
 
 # DL with curl
@@ -150,13 +158,14 @@ zip::unzip(zipfile = "month_ids.zip", exdir="month_ids")
 month_ids <- read.csv("month_ids/month_ids.csv", header = TRUE)
 ```
 
-(Note the above will also have downloaded the `pgm` items for the months
+Note the above will also have downloaded the `pgm` items for the months
 and the countries, so this is available for later processing. Adding the
-`pgm` training data would need to be added to the above if desired.)
+`pgm` training data would need to be added to the above if desired. But
+the basic idea is mapped out here.
 
 ## Basic data manipulation for country-months
 
-Here we see how to align the dates and country codes so that the
+This section merges or aligns the dates and country codes so that the
 identifiers can always be put back into the data for case
 identifications. This is a set of `merge` commands using base R.
 
@@ -180,7 +189,12 @@ dfs <- merge(dfs, month_ids[,2:4],
 rm(df1)
 ```
 
-One can now subset or select from an object like `dfs` in several ways:
+If you want more variables in a data frame for analysis they can be
+added as arguments to the `subset()` call.
+
+One can now subset from an object like `dfs` in several ways using all
+the usual tools. Just pulling out the data for Libya or by date would be
+like this:
 
 ``` r
 # Pull out rows for Libya
@@ -242,12 +256,12 @@ rm(post21)
 
 # Basic Time Series Plots of all the SB killings data
 
-This summarizes and plots the GED state-based (SB) deaths series. The
-goal in the next part is to
+This summarizes and plots the GED state-based deaths series in `ged_sb`.
+The goal in the next part is to
 
 1.  extract the data by month
 2.  sumamrize the mean and standard deviation for each month
-3.  Plot these monthly statistics as time series
+3.  plot these monthly statistics as time series
 
 ``` r
 #### Simple plots as checks ####
@@ -487,18 +501,27 @@ Frequency of zeros over time
 </div>
 
 Finally an interactive plot of the variation over months can be
-constructed as follows:
+constructed. Here the log stadnard deviation over time in the `ged_sb`
+are plotted. The benefit of doing this in the natural logarithmic domain
+is that then one can see the relative proportionate increases in the
+variation in more recent years compared to prior years. (The code here
+will need to be run locally if you would like to see the plot.)
 
 ``` r
+# Set up the data for the standard deviations as `x`
 x <- roll.ged.sb[,2]
+
+# Months as factor
 dmn <- list(month.abb, unique(floor(time(x))))
+
 # convert to data frame by month, to make data retrieval easier
 res.x <- as.data.frame(t(matrix(x, 12, dimnames = dmn)))
-# set the values of the 3d vectors
+
+# set the equal dimension values of the 3d vectors
 n <- nrow(res.x)
 x.x <- rep(month.abb, times=n)
 y.x <- rep(rownames(res.x), each=12)
-z.x <- c(log(as.numeric(x)))
+z.x <- c(log(as.numeric(x))) # note taking logs here.
 
 # May need to append values to the vector
 # converted from the time series and we let them
@@ -507,8 +530,12 @@ z.x <- c(log(as.numeric(x)))
 # n.z <- length(x.us)
 # z.us[n.z+1] = z.us[n.z]
 # z.us[n.z+2] = z.us[n.z]
+
+# Make into a dataframe
 x.us <- data.frame(x.x, y.x, z.x)
 colnames(x.us) <- data.frame("x", "y", "z")
+
+# Plot using plot_ly for interactive effects
 fig.x <- plot_ly(x.us, x = ~y, y = ~x, z = ~z, 
                  type = 'scatter3d', 
                  mode = 'lines', color=~y.x)
@@ -538,6 +565,14 @@ class with a specific chapter on the Tweedie distribution.
 Numerical results and computational details for the Tweedie distribution
 and its likeihood estimation are addressed in Zhang (2013), P. K. Dunn
 and Smyth (2008) P. K. Dunn and Smyth (2005), and P. Dunn (2017).
+
+The reason to consider this distribution for the data is that
+
+1.  It allows a point-mass at zero (without the need for a
+    zero-inflation model or parameters)
+2.  It nests some commonly used distrubutions for this kind of problem
+    as special cases (see below)
+3.  
 
 ## Definition
 
@@ -581,7 +616,7 @@ P. Dunn 2017).
 
 The variance function for the ED models is constructed from the
 canonical mapping of the derivatives of the cumulant for $`\kappa()`$ to
-the mean $`\mu`$. IN this case these are
+the mean $`\mu`$. These are
 
 ``` math
 
@@ -614,7 +649,7 @@ as reproductive exponential dispersion:
 
 ``` math
 
-  \operatorname{Tw} _{p}(\mu ,\sigma ^{2})=\operatorname{Tw _{p}}(c\mu ,c^{2-p}\sigma ^{2}).
+  \textrm{Tw} _{p}(\mu ,\sigma ^{2})=\textrm{Tw}_{p}(c\mu ,c^{2-p}\sigma ^{2}).
 ```
 (Jorgensen 1997 Theorem 4.1)
 
@@ -827,7 +862,7 @@ Now plot the probability of a zero count from the Tweedie, Poisson, and
 data for comparison.
 
 ``` r
-# Convert using Dunn and Smyth formula
+# Convert using Dunn and Smyth paper formula for Pr(Y=0) in this model
 twp.convert <- sapply(1:nrow(twp), 
                       function(i) tweedie.convert(xi = twp[i,"p"], 
                                                   mu=twp[i,"Mean"], 
@@ -845,16 +880,21 @@ freq.zeros <- aggregate(dfs$ged_sb==0,
                         by=list(dfs$month_id), mean)
 
 # Poisson predictions make no sense
-# range(dpois(0, lambda=roll.ged.sb[,1]))
+psn.0 <- dpois(0, lambda=roll.ged.sb[,1])
 
+# Plotting: Tweedie prediction and observed.
+par(mfrow=c(2,1))
 plot(ts(cbind(twp.convert$p0, freq.zeros[,2]), 
         start=c(1990,1), freq=12),
      plot.type="single", lwd=2, lty=2:3, col=2:1, 
-     ylab = "Pr(ged_sb=0)")
+     ylab = "Pr(ged_sb=0)", cex.lab=0.8)
 
 legend(2013, 0.925, 
        c("Observed Frequency", "Tweedie Prediction"), col=2:1,
        lty=2:3, lwd=2, cex=0.75)
+
+plot(1-psn.0, lwd=2, lty=1, ylab="",
+     main="Pr(ged_sb=0) from a Poisson distribution", cex.lab=0.8)
 ```
 
 <div class="figure" style="text-align: center">
@@ -868,7 +908,10 @@ baseline frequency of zero.
 
 </div>
 
-The Tweedie model captures this important property of the data.
+The Tweedie model captures this important property of the data. The
+second graph with the Poisson result shows that using the per-month
+means misses the probability of the zeros because of the skewed nature
+of the distribution.
 
 # Simple prediction models
 
@@ -1087,7 +1130,10 @@ A simple first comparison is just to look at the summaries of each of
 the 5 forecast models compared to the observed values for each
 country-month.
 
-- Series of scatter, QQ, and then ECDF plots for the models.
+- Series of plots for the models:
+  - scatter
+  - QQ (quantile versus quantile),
+  - Empirical cumulative distribution function (ECDF)
 - Various metrics for these.
 
 ``` r
@@ -1114,6 +1160,16 @@ legend("bottomright", legend=c("Poisson", "Actual"), col=1:2, lwd=2)
 </p>
 
 </div>
+
+The idea here is that if the predictions are good, then for a given
+model we expcet
+
+- the scatter plots should be close to a 45-degree line
+- the QQ plot should align thw quantiles (deviations or outliers are
+  noted in the tails usually)
+- The ECDF should follow the northwester axes of the plot
+
+From the results here there is clear basis for improvement!
 
 ## Forecast Formatting
 
@@ -1416,7 +1472,7 @@ system.time(scored.out <- score(as_forecast_sample(all.stacked,
 ```
 
     ##    user  system elapsed 
-    ##   6.901   0.936   4.113
+    ##   7.730   0.397   3.955
 
 ``` r
 # Get summaries by correct units of evaluation

@@ -15,8 +15,6 @@ output:
     toc_depth: 2
     collapsed: yes
     smooth_scroll: yes
-    code_folding: show
-    code_download: true
   pdf_document:
     toc: yes
     toc_depth: '2'
@@ -67,28 +65,35 @@ library(openair)
 
 ## Reading in data
 
-Now these are compressed, which means there are only data for all observations that are observed.
+This section shows how to automatically download and read in the training data for the VIEWS `cm` to `R`.
 
-*If you run your own local version of this, you will likely need to change the paths to the input files.*  Here are links for the [codebooks](https://viewsforecasting.org/wp-content/uploads/cm_features_competition.pdf) or [here](https://www.dropbox.com/scl/fo/rkj4ttawoz9pv6x35r9cq/ACNAhhWCn6wCJvSv8ZeyMu4/cm_level_data?dl=0&preview=ideas_fastforward_2025_cm_features.pdf&rlkey=44eg0kk4w8yh8tm1f53vvpzps&subfolder_nav_tracking=1) and [input files](https://www.dropbox.com/scl/fo/rkj4ttawoz9pv6x35r9cq/APSd_RJxvk-fpNAteD4J1iY?rlkey=44eg0kk4w8yh8tm1f53vvpzps&e=1&st=r0qv5cz1&dl=0). 
+*If you run your own local version of this, you may likely need to change the paths to the input files.*  Here are links for the [codebooks](https://viewsforecasting.org/wp-content/uploads/cm_features_competition.pdf) or [here](https://www.dropbox.com/scl/fo/rkj4ttawoz9pv6x35r9cq/ACNAhhWCn6wCJvSv8ZeyMu4/cm_level_data?dl=0&preview=ideas_fastforward_2025_cm_features.pdf&rlkey=44eg0kk4w8yh8tm1f53vvpzps&subfolder_nav_tracking=1) and [input files](https://www.dropbox.com/scl/fo/rkj4ttawoz9pv6x35r9cq/APSd_RJxvk-fpNAteD4J1iY?rlkey=44eg0kk4w8yh8tm1f53vvpzps&e=1&st=r0qv5cz1&dl=0). 
+
+This does take some time initially.  (Once you have these files locally you can bypass this section or alter this to run locally!)
 
 ```{r readdata, echo=TRUE, cache=TRUE, cache.rebuild = !file.exists("cm_data_121_542.parquet")}
 
-# CM level data: features and outcomes
+# CM level data: features and outcomes path
 dl_link <- "https://www.dropbox.com/scl/fo/rkj4ttawoz9pv6x35r9cq/ACi53p087OvQUke0pIg88pg/cm_level_data/cm_data_121_542.parquet?rlkey=44eg0kk4w8yh8tm1f53vvpzps&dl=1"
 
+# File name once downloaded
 destfile <- "cm_data_121_542.parquet"
 
 # DL with curl
 curl::curl_download(url = dl_link, destfile = destfile)
 
-
-# This is the main data file
+# This is the main data file being read into R
 cm <- read_parquet("cm_data_121_542.parquet")
+
+###
+## Repeat the above with the data for the country labels and the month ids
+##
 
 # Get the list of country names as well to add to the data
 # These are from the main VIEWS site
 dl_link2 <- "https://www.dropbox.com/scl/fo/rurpcmtpcquni5onoyuus/AGeR6dD-Ru-Emwn06HnKAE8/matching_tables?preview=countries.csv&rlkey=v1o4va647qrwc4la7m8i7cedk&subfolder_nav_tracking=1&st=goucd0hg&dl=1"
 
+# File name declared
 destfile2 <- "country.zip"
 
 # DL with curl
@@ -110,14 +115,13 @@ month_ids <- read.csv("month_ids/month_ids.csv", header = TRUE)
 
 ```
 
-(Note the above will also have downloaded the `pgm` items for the months and the countries, so this is available for later processing.  Adding the `pgm` training data would need to be added to the above if desired.)
+Note the above will also have downloaded the `pgm` items for the months and the countries, so this is available for later processing.  Adding the `pgm` training data would need to be added to the above if desired.  But the basic idea is mapped out here.
 
 ## Basic data manipulation for country-months
 
-Here we see how to align the dates and country codes so that the identifiers can always be put back into the data for case identifications.  This is a set of `merge` commands using base R.
+This section merges or aligns the dates and country codes so that the identifiers can always be put back into the data for case identifications.  This is a set of `merge` commands using base R.
 
 ```{r mergething, echo=TRUE}
-
 # Subset out the main (conflict) variables we want
 df1 <- subset(cm, select = c(month_id, country_id,
                              gleditsch_ward,
@@ -138,7 +142,9 @@ rm(df1)
 
 ```
 
-One can now subset or select from an object like `dfs` in several ways:
+If you want more variables in a data frame for analysis they can be added as arguments to the `subset()` call.
+
+One can now subset from an object like `dfs` in several ways using all the usual tools.  Just pulling out the data for Libya or by date would be like this:
 
 ```{r selector, echo=TRUE}
 # Pull out rows for Libya
@@ -154,13 +160,19 @@ str(post21)
 rm(post21)
 ```
 
+Note this gives us what we would expect:
+
+1.  For Libya there are 30 years of monthly data, or 420 observations.
+2.  The `post21` object covers 3 years over 12 months for 191 countries: $3 \times 12 \times 191 = 6876$. 
+
+
 # Basic Time Series Plots of all the SB killings data
 
-This summarizes and plots the GED state-based (SB) deaths series.  The goal in the next part is to 
+This summarizes and plots the GED state-based deaths series in `ged_sb`.  The goal in the next part is to 
 
 1.  extract the data by month
 2.  sumamrize the mean and standard deviation for each month
-3.  Plot these monthly statistics as time series
+3.  plot these monthly statistics as time series
 
 ```{r demoplots, echo=TRUE, cache=TRUE, fig.keep='all', fig.align='center', fig.height=4}
 #### Simple plots as checks ####
@@ -224,19 +236,24 @@ plot(ts(freq.zeros[,2], start=c(1990,1), freq=12),
      plot.type="single", lwd=2, col=2, ylab = "Pr(ged_sb=0)")
 
 ```
-Finally an interactive plot of the variation over months can be constructed as follows:
+Finally an interactive plot of the variation over months can be constructed.  Here the log stadnard deviation over time in the `ged_sb` are plotted.  The benefit of doing this in the natural logarithmic domain is that then one can see the relative proportionate increases in the variation in more recent years compared to prior years. (The code here will need to be run locally if you would like to see the plot.)
 
 ```{r multits, fig.keep='last', warning=FALSE}
 
+# Set up the data for the standard deviations as `x`
 x <- roll.ged.sb[,2]
+
+# Months as factor
 dmn <- list(month.abb, unique(floor(time(x))))
+
 # convert to data frame by month, to make data retrieval easier
 res.x <- as.data.frame(t(matrix(x, 12, dimnames = dmn)))
-# set the values of the 3d vectors
+
+# set the equal dimension values of the 3d vectors
 n <- nrow(res.x)
 x.x <- rep(month.abb, times=n)
 y.x <- rep(rownames(res.x), each=12)
-z.x <- c(log(as.numeric(x)))
+z.x <- c(log(as.numeric(x))) # note taking logs here.
 
 # May need to append values to the vector
 # converted from the time series and we let them
@@ -245,8 +262,12 @@ z.x <- c(log(as.numeric(x)))
 # n.z <- length(x.us)
 # z.us[n.z+1] = z.us[n.z]
 # z.us[n.z+2] = z.us[n.z]
+
+# Make into a dataframe
 x.us <- data.frame(x.x, y.x, z.x)
 colnames(x.us) <- data.frame("x", "y", "z")
+
+# Plot using plot_ly for interactive effects
 fig.x <- plot_ly(x.us, x = ~y, y = ~x, z = ~z, 
                  type = 'scatter3d', 
                  mode = 'lines', color=~y.x)
@@ -270,6 +291,12 @@ From the earlier explorations regression-alike prediction models for 'ged_sb` fo
 The Tweedie distribution is a member of the exponential dispersion model (EDM) class of distributions.  The canonical references to this are @tweedie1984index which defines the specific distribution, @Jorgensen87 that outlines the EDM class and @jorgensen1997theory that treats the whole class with a specific chapter on the Tweedie distribution.
 
 Numerical results and computational details for the Tweedie distribution and its likeihood estimation are addressed in @zhang2013likelihood, @dunn2008evaluation @dunn2005series, and @dunn2017tweedie.
+
+The reason to consider this distribution for the data is that
+
+1.  It allows a point-mass at zero (without the need for a zero-inflation model or parameters)
+2.  It nests some commonly used distrubutions for this kind of problem as special cases (see below)
+3.  
 
 ## Definition
 
@@ -298,7 +325,7 @@ $$
 $$
 Typically note the mapping that $\alpha = \frac{p-2}{p-1}$ and $p = \frac{\alpha-2}{\alpha-1}$.   Numerical approximation must be used for evaluation and simulation [See @dunn2005series; @dunn2008evaluation; and @dunn2017tweedie].
 
-The variance function for the ED models is constructed from the canonical mapping of the derivatives of the cumulant for $\kappa()$ to the mean $\mu$.  IN this case these are 
+The variance function for the ED models is constructed from the canonical mapping of the derivatives of the cumulant for $\kappa()$ to the mean $\mu$.  These are 
 
 $$
 \tau(\theta) = \kappa^\prime(\theta) = \mu
@@ -324,7 +351,7 @@ Key idea is that these have a positive mass at zero: so there is just some proba
 Tweedie random variables are are subject to scale invariance also known as reproductive exponential dispersion:
 
 $$
-  \operatorname{Tw} _{p}(\mu ,\sigma ^{2})=\operatorname{Tw _{p}}(c\mu ,c^{2-p}\sigma ^{2}).
+  \textrm{Tw} _{p}(\mu ,\sigma ^{2})=\textrm{Tw}_{p}(c\mu ,c^{2-p}\sigma ^{2}).
 $$
 [@jorgensen1997theory Theorem 4.1]
 
@@ -461,7 +488,7 @@ Now plot the probability of a zero count from the Tweedie, Poisson, and data for
 
 ```{r zeropred, echo=TRUE, fig.height=6, fig.width=6, fig.align="center", fig.keep='last', fig.cap='Probabilty of zero prediction from the Tweedie model compared to baseline frequency of zero.'}
 
-# Convert using Dunn and Smyth formula
+# Convert using Dunn and Smyth paper formula for Pr(Y=0) in this model
 twp.convert <- sapply(1:nrow(twp), 
                       function(i) tweedie.convert(xi = twp[i,"p"], 
                                                   mu=twp[i,"Mean"], 
