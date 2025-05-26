@@ -12,7 +12,7 @@ This is a simple demo for getting started with the VIEWS data in `R`.  It covers
 
 [Learning about Tweedie and Exponential Dispersion Models](https://github.com/PTB-OEDA/VIEWS-Startup/blob/main/Brandt-VIEWS2-Demo.md#tweedie-distribution-models)
 
-[Practocel Forecast Scoring](https://github.com/PTB-OEDA/VIEWS-Startup/blob/main/Brandt-VIEWS2-Demo.md#practical-forecast-scoring)
+[Practical Forecast Scoring](https://github.com/PTB-OEDA/VIEWS-Startup/blob/main/Brandt-VIEWS2-Demo.md#practical-forecast-scoring)
 
 It lets you do things like
 
