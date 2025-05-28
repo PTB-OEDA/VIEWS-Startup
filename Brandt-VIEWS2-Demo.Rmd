@@ -113,6 +113,10 @@ curl::curl_download(url = dl_link3, destfile = destfile3)
 zip::unzip(zipfile = "month_ids.zip", exdir="month_ids")
 month_ids <- read.csv("month_ids/month_ids.csv", header = TRUE)
 
+# Save the downloaded data for later -- so this is all in one image!
+
+save.image("VIEWS-alldownloaded.RData")
+
 ```
 
 Note the above will also have downloaded the `pgm` items for the months and the countries, so this is available for later processing.  Adding the `pgm` training data would need to be added to the above if desired.  But the basic idea is mapped out here.
@@ -1331,12 +1335,40 @@ It is really hard to beat `Zeros`!
 
 2.  Then score the model against the baselines in the previous section.
 
+Key variables here from the codebook could be:
+````{verbatim}
+wdi_sp_dyn_le00_in : Life expectancy at birth, total year
+wdi_sp_dyn_imrt_in : Infant mortality rate per 1,000 live births.
+wdi_sh_dyn_mort_fe : Female under-five mortality rate per 1,000 live birth.
+wdi_sp_pop_14_fe_zs : Female population between the ages 0 to 14 as a percentage of the total female population
+wdi_sp_pop_1564_fe_zs : Female population between the ages 15 to 64 as a percentage of the total female population.
+wdi_sp_pop_65up_fe_zs : Female population 65 years of age or older as a percentage of the total female population.
+wdi_sp_pop_grow : Annual population growth in percentage.
+wdi_sp_urb_totl_in_zs : Percentage of population living in urban population areas.
+splag_wdi_sl_tlf_totl_fe_zs : Female labor force as a percentage of the total.
+splag_wdi_sm_pop_refg_or : Refugee population by country or territory of origin.
+splag_wdi_sm_pop_netm : Net total of migrants during a five-year estimate.
+````
+
 ## Exercise 3: Civil-Military Expenditures
 
 1.  Use measures of military expenditures or fiscal pressures as predictors.
 
 2.  Then score the model against the baselines in the previous section.
 
+Key variables here from the codebook could be:
+````{verbatim}
+wdi_ms_mil_xpnd_gd_zs : Military expenditure as percentage of GDP.
+
+wdi_ms_mil_xpnd_zs : Military expenditure as percentage of general government expenditure.
+
+vdem_v2x_ex_military : Military dimension index on an interval from low to high (0-1).
+
+
+````
+
+```{r civmil_exp, echo=TRUE}
+```
 ## Exercise 4: Extract out predictions by region or country
 
 This is a quick way to see how scores can be extracted by country for a time period:
@@ -1352,3 +1384,10 @@ Tweedie.scored %>% filter(isoab=="LBY") %>% summarise_scores(by="month_id")
 2.  Plot the forecast densities over the training and test periods for a case like this.
 
 # References
+
+
+<!-- ```{r echo=FALSE} -->
+<!-- # Run this to get a saved image of everything! -->
+<!-- save.image("Brandt-VIEWS-Demo.RData") -->
+<!-- ``` -->
+

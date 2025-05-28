@@ -2,7 +2,7 @@ VIEWS Data Setup and Modeling Demo
 ================
 Patrick T. Brandt
 
-May 26, 2025
+May 27, 2025
 
 - [Introduction](#introduction)
 - [Country-Month Data setup](#country-month-data-setup)
@@ -156,6 +156,10 @@ destfile3 <- "month_ids.zip"
 curl::curl_download(url = dl_link3, destfile = destfile3)
 zip::unzip(zipfile = "month_ids.zip", exdir="month_ids")
 month_ids <- read.csv("month_ids/month_ids.csv", header = TRUE)
+
+# Save the downloaded data for later -- so this is all in one image!
+
+save.image("VIEWS-alldownloaded.RData")
 ```
 
 Note the above will also have downloaded the `pgm` items for the months
@@ -254,13 +258,19 @@ str(post21)
 rm(post21)
 ```
 
+Note this gives us what we would expect:
+
+1.  For Libya there are 30 years of monthly data, or 420 observations.
+2.  The `post21` object covers 3 years over 12 months for 191 countries:
+    $`3 \times 12 \times 191 = 6876`$.
+
 # Basic Time Series Plots of all the SB killings data
 
 This summarizes and plots the GED state-based deaths series in `ged_sb`.
 The goal in the next part is to
 
 1.  extract the data by month
-2.  sumamrize the mean and standard deviation for each month
+2.  summarize the mean and standard deviation for each month
 3.  plot these monthly statistics as time series
 
 ``` r
@@ -297,7 +307,7 @@ plot(roll.ged.sb, lwd=2, col=1:2, main="",
 
 # Distributional summaries
 
-Here we look at the main variable from GED, the state-based deaths in
+Here look at the main variable from UCDP GED, the state-based deaths in
 the `ged_sb` variable. (This can be repeated later for the other target
 measures in the `dfs` object.). Here we compute the summarize the main
 quantiles from the 75th to the 99th:
@@ -452,7 +462,9 @@ print(sb_quantiles)
 Of note here is that the lower 75th to 85th percentile of the
 distribution is zeros in almost all of the training data. In recent
 years this increases slightly. But this is why baseline predictions of
-zero or only a recent mean and important for comparison
+zero or only a recent mean are important for comparison.
+
+Below a time series plot of the same is explored.
 
 ## Some key time series summaries of variation
 
@@ -1472,7 +1484,7 @@ system.time(scored.out <- score(as_forecast_sample(all.stacked,
 ```
 
     ##    user  system elapsed 
-    ##   7.730   0.397   3.955
+    ##   7.710   0.373   3.897
 
 ``` r
 # Get summaries by correct units of evaluation
@@ -2180,12 +2192,38 @@ It is really hard to beat `Zeros`!
 
 2.  Then score the model against the baselines in the previous section.
 
+Key variables here from the codebook could be:
+
+``` default
+wdi_sp_dyn_le00_in : Life expectancy at birth, total year
+wdi_sp_dyn_imrt_in : Infant mortality rate per 1,000 live births.
+wdi_sh_dyn_mort_fe : Female under-five mortality rate per 1,000 live birth.
+wdi_sp_pop_14_fe_zs : Female population between the ages 0 to 14 as a percentage of the total female population
+wdi_sp_pop_1564_fe_zs : Female population between the ages 15 to 64 as a percentage of the total female population.
+wdi_sp_pop_65up_fe_zs : Female population 65 years of age or older as a percentage of the total female population.
+wdi_sp_pop_grow : Annual population growth in percentage.
+wdi_sp_urb_totl_in_zs : Percentage of population living in urban population areas.
+splag_wdi_sl_tlf_totl_fe_zs : Female labor force as a percentage of the total.
+splag_wdi_sm_pop_refg_or : Refugee population by country or territory of origin.
+splag_wdi_sm_pop_netm : Net total of migrants during a five-year estimate.
+```
+
 ## Exercise 3: Civil-Military Expenditures
 
 1.  Use measures of military expenditures or fiscal pressures as
     predictors.
 
 2.  Then score the model against the baselines in the previous section.
+
+Key variables here from the codebook could be:
+
+``` default
+wdi_ms_mil_xpnd_gd_zs : Military expenditure as percentage of GDP.
+
+wdi_ms_mil_xpnd_zs : Military expenditure as percentage of general government expenditure.
+
+vdem_v2x_ex_military : Military dimension index on an interval from low to high (0-1).
+```
 
 ## Exercise 4: Extract out predictions by region or country
 
@@ -2257,6 +2295,14 @@ Tweedie.scored %>% filter(isoab=="LBY") %>% summarise_scores(by="month_id")
     case like this.
 
 # References
+
+<!-- ```{r echo=FALSE} -->
+
+<!-- # Run this to get a saved image of everything! -->
+
+<!-- save.image("Brandt-VIEWS-Demo.RData") -->
+
+<!-- ``` -->
 
 <div id="refs" class="references csl-bib-body hanging-indent"
 entry-spacing="0">
