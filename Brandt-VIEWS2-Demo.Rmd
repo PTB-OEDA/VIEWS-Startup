@@ -48,6 +48,8 @@ This section handles loading all packages then used below. This will able be abl
 ```{r loadit, echo=TRUE, message=FALSE}
 rm(list=ls())  # Clean start, I know...
 library(arrow)
+library(curl)
+library(zip)
 library(plotly)
 library(tidyr)
 library(ggplot2)

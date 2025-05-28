@@ -2,7 +2,7 @@ VIEWS Data Setup and Modeling Demo
 ================
 Patrick T. Brandt
 
-May 27, 2025
+May 28, 2025
 
 - [Introduction](#introduction)
 - [Country-Month Data setup](#country-month-data-setup)
@@ -86,6 +86,8 @@ loads / libraries needed below.
 ``` r
 rm(list=ls())  # Clean start, I know...
 library(arrow)
+library(curl)
+library(zip)
 library(plotly)
 library(tidyr)
 library(ggplot2)
@@ -1484,7 +1486,7 @@ system.time(scored.out <- score(as_forecast_sample(all.stacked,
 ```
 
     ##    user  system elapsed 
-    ##   7.710   0.373   3.897
+    ##   7.687   0.425   3.877
 
 ``` r
 # Get summaries by correct units of evaluation
