@@ -244,7 +244,7 @@ plot(ts(freq.zeros[,2], start=c(1990,1), freq=12),
      plot.type="single", lwd=2, col=2, ylab = "Pr(ged_sb=0)")
 
 ```
-Finally an interactive plot of the variation over months can be constructed.  Here the log stadnard deviation over time in the `ged_sb` are plotted.  The benefit of doing this in the natural logarithmic domain is that then one can see the relative proportionate increases in the variation in more recent years compared to prior years. (The code here will need to be run locally if you would like to see the plot.)
+Finally an interactive plot of the variation over months can be constructed.  Here the log standard deviation over time in the `ged_sb` are plotted.  The benefit of doing this in the natural logarithmic domain is that then one can see the relative proportionate increases in the variation in more recent years compared to prior years. (The code here will need to be run locally if you would like to see the plot.)
 
 ```{r multits, fig.keep='last', warning=FALSE}
 
