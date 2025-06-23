@@ -304,7 +304,6 @@ The reason to consider this distribution for the data is that
 
 1.  It allows a point-mass at zero (without the need for a zero-inflation model or parameters)
 2.  It nests some commonly used distrubutions for this kind of problem as special cases (see below)
-3.  
 
 ## Definition
 
@@ -738,7 +737,7 @@ Consider making a dataset of the `N` predictions for the Poisson, Tweedie, and o
 # This is different than in some other applications, but the logic is meant
 # to be clear here.
 
-# Add case idtenifiers to the forecasts for the Poisson and Tweedie models
+# Add case identifiers to the forecasts for the Poisson and Tweedie models
 forecast.P <- cbind(test[,c(1,2)], count.out$P)   # Poisson model ones
 forecast.TW <- cbind(test[,c(1,2)], count.out$TW) # Tweedie ones
 
@@ -1333,11 +1332,12 @@ It is really hard to beat `Zeros`!
 
 ## Exercise 2: Demography
 
-1.   Use a demographic covariate in a model like log(IMR).
+1.  Use a demographic covariate in a model like log(IMR).
 
 2.  Then score the model against the baselines in the previous section.
 
 Key variables here from the codebook could be:
+
 ````{verbatim}
 wdi_sp_dyn_le00_in : Life expectancy at birth, total year
 wdi_sp_dyn_imrt_in : Infant mortality rate per 1,000 live births.

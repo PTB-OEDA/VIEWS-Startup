@@ -2,7 +2,7 @@ VIEWS Data Setup and Modeling Demo
 ================
 Patrick T. Brandt
 
-May 28, 2025
+June 10, 2025
 
 - [Introduction](#introduction)
 - [Country-Month Data setup](#country-month-data-setup)
@@ -515,7 +515,7 @@ Frequency of zeros over time
 </div>
 
 Finally an interactive plot of the variation over months can be
-constructed. Here the log stadnard deviation over time in the `ged_sb`
+constructed. Here the log standard deviation over time in the `ged_sb`
 are plotted. The benefit of doing this in the natural logarithmic domain
 is that then one can see the relative proportionate increases in the
 variation in more recent years compared to prior years. (The code here
@@ -586,7 +586,6 @@ The reason to consider this distribution for the data is that
     zero-inflation model or parameters)
 2.  It nests some commonly used distrubutions for this kind of problem
     as special cases (see below)
-3.  
 
 ## Definition
 
@@ -1200,7 +1199,7 @@ done like this:
 # This is different than in some other applications, but the logic is meant
 # to be clear here.
 
-# Add case idtenifiers to the forecasts for the Poisson and Tweedie models
+# Add case identifiers to the forecasts for the Poisson and Tweedie models
 forecast.P <- cbind(test[,c(1,2)], count.out$P)   # Poisson model ones
 forecast.TW <- cbind(test[,c(1,2)], count.out$TW) # Tweedie ones
 
@@ -1486,7 +1485,7 @@ system.time(scored.out <- score(as_forecast_sample(all.stacked,
 ```
 
     ##    user  system elapsed 
-    ##   7.687   0.425   3.877
+    ##   7.739   0.492   4.063
 
 ``` r
 # Get summaries by correct units of evaluation
